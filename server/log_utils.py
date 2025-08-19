@@ -1,55 +1,46 @@
 #!/usr/bin/env python3
+"""Logging utilities for Snowflake MCP Server."""
 
 import logging
-
-import httpx
+import sys
+from typing import Optional
 
 from server.config import Config
 
-config = Config.from_env()
-logger = logging.getLogger(__name__)
 
-
-def setup_logging() -> logging.Logger:
-    """Set up logging configuration and return a logger instance."""
+def setup_logging(config: Optional[Config] = None) -> logging.Logger:
+    """
+    Set up logging configuration and return a logger instance.
+    
+    Args:
+        config: Optional configuration object
+        
+    Returns:
+        Configured logger instance
+    """
+    if not config:
+        config = Config.from_env()
+    
+    # Configure root logger
     logging.basicConfig(
         level=logging.DEBUG if config.debug else logging.INFO,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.StreamHandler(sys.stderr)
+        ]
     )
-    return logging.getLogger("g2_mcp_server")
+    
+    # Create logger for the application
+    logger = logging.getLogger("snowflake_mcp_server")
+    
+    # Adjust snowflake connector logging (it can be verbose)
+    if not config.debug:
+        logging.getLogger("snowflake.connector").setLevel(logging.WARNING)
+        logging.getLogger("urllib3").setLevel(logging.WARNING)
+        logging.getLogger("botocore").setLevel(logging.WARNING)
+    
+    return logger
 
 
-def log_request(request: httpx.Request) -> None:
-    """Log outgoing HTTP requests."""
-    logger.info(f"Request: {request.method} {request.url}")
-    logger.debug(f"Request headers: {dict(request.headers)}")
-    if request.content:
-        logger.debug(
-            f"Request body: {request.content.decode('utf-8', errors='ignore')}"
-        )
-
-
-def log_response(response: httpx.Response) -> None:
-    """Log incoming HTTP responses."""
-    logger.info(f"Response: {response.status_code} {response.url}")
-    logger.debug(f"Response headers: {dict(response.headers)}")
-    # Don't try to read response body in event hooks as it can cause issues
-    # The body will be consumed by the actual request handler
-
-
-async def async_log_request(request: httpx.Request) -> None:
-    """Log outgoing HTTP requests (async version)."""
-    logger.info(f"Request: {request.method} {request.url}")
-    logger.debug(f"Request headers: {dict(request.headers)}")
-    if request.content:
-        logger.debug(
-            f"Request body: {request.content.decode('utf-8', errors='ignore')}"
-        )
-
-
-async def async_log_response(response: httpx.Response) -> None:
-    """Log incoming HTTP responses (async version)."""
-    logger.info(f"Response: {response.status_code} {response.url}")
-    logger.debug(f"Response headers: {dict(response.headers)}")
-    # Don't try to read response body in event hooks as it can cause issues
-    # The body will be consumed by the actual request handler
+# Create default logger instance
+logger = setup_logging()

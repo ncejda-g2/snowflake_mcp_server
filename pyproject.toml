@@ -3,20 +3,20 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "g2_mcp_server"
+name = "snowflake_mcp_server"
 version = "0.1.0"
-description = "A G2 software reviews and ratings MCP server"
-authors = [{ name = "Tomas Caraccia", email = "tcaraccia@g2.com" }]
+description = "A Snowflake read-only MCP server with PAT authentication"
+authors = [{ name = "Nicholas Cejda", email = "ncejda@g2.com" }]
 requires-python = ">=3.12"
 dependencies = [
-  "aiohttp>=3.12.13",
   "fastmcp>=2.9.2",
-  "httpx>=0.28.1",
+  "snowflake-connector-python>=3.0.0",
   "pydantic>=2.0.0",
-  "pyyaml>=6.0.2",
+  "httpx>=0.28.1",
+  "cachetools>=5.0.0",
+  "sqlparse>=0.4.0",
   "starlette>=0.47.1",
   "uvicorn>=0.34.3",
-  "newrelic>=10.13.0",
 ]
 
 [project.optional-dependencies]
@@ -33,6 +33,7 @@ dev = [
 
 [project.scripts]
 server = "server.app:main"
+snowflake-mcp = "main:main"
 
 [tool.ruff]
 target-version = "py312"
@@ -65,7 +66,7 @@ skip-magic-trailing-comma = false
 line-ending = "auto"
 
 [tool.ruff.lint.isort]
-known-first-party = ["g2_mcp_server"]
+known-first-party = ["snowflake_mcp_server", "server"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["server"]

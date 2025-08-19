@@ -1,149 +1,212 @@
-# G2 MCP Server - Claude Development Guide
+# Snowflake MCP Server - Claude Development Guide
 
-This is a Model Context Protocol (MCP) server that provides access to G2's software reviews and ratings data using OAuth authentication and OpenAPI specification.
+This is a Model Context Protocol (MCP) server that provides secure, read-only access to Snowflake databases using Programmatic Access Token (PAT) authentication.
+
+## Project Overview
+
+A POC/demo implementation of an MCP server for Snowflake that:
+- Enforces strict read-only access at multiple levels
+- Uses PAT authentication for security
+- Provides intelligent schema discovery and caching
+- Supports paginated query execution
+- Validates all SQL queries for safety
 
 ## Project Structure
 
-- `g2_mcp_server/`
-  - `app.py` - MCP server main entry point with OAuth and manual tools integration
-  - `config.py` - Configuration management with validation
-  - `log_utils.py` - Logging utilities for request/response tracking
-  - `tools/` - Manual tool implementations
-    - `__init__.py` - Auto-discovery and registration of tools
-    - `bi_tools.py` - Business intelligence and buyer intent tools
-    - `category_tools.py` - Category management tools
-    - `product_tools.py` - Product listing and detail tools
-    - `review_tools.py` - Review management tools
-    - `vendor_tools.py` - Vendor management tools
-  - `__init__.py` - Package initialization
-  - `__main__.py` - CLI entry point
-- `main.py` - Entry point for running the server
-- `pyproject.toml` - Python project configuration and dependencies
-- `mise.toml` - Development environment configuration
+```
+snowflake_mcp_server/
+├── server/
+│   ├── app.py                    # Main MCP application with tool registration
+│   ├── config.py                  # Configuration management
+│   ├── snowflake_connection.py   # Snowflake connection with read-only enforcement
+│   ├── schema_cache.py           # Schema caching system (5-day TTL)
+│   ├── log_utils.py              # Logging configuration
+│   └── tools/
+│       ├── catalog_refresh.py    # Refresh schema catalog
+│       ├── schema_inspector.py   # Browse database structure
+│       ├── table_inspector.py    # Get table details
+│       └── query_executor.py     # Execute read-only queries
+├── main.py                        # Entry point
+├── pyproject.toml                # Project configuration
+└── IMPLEMENTATION_PLAN.md        # Detailed implementation documentation
+```
 
-## Development Setup
+## Available MCP Tools
+
+### 1. `refresh_catalog`
+Scans all accessible databases and caches schema information.
+- Required before first query execution
+- Cache expires after 5 days
+- Can force refresh with `force=true`
+
+### 2. `inspect_schemas`
+Browse database structure hierarchically.
+- Filter by database, schema, or table patterns
+- Returns from cache for fast access
+- Auto-refreshes if cache expired
+
+### 3. `search_tables`
+Search for tables across all databases.
+- Searches table names and comments
+- Case-insensitive matching
+
+### 4. `get_table_schema`
+Get detailed column information for a specific table.
+- Shows column names, types, constraints
+- Optional sample data with `include_sample=true`
+
+### 5. `execute_query`
+Execute read-only SQL queries with pagination.
+- Only allows SELECT, SHOW, DESCRIBE, WITH queries
+- Blocks all write operations
+- Returns 100 rows per page by default
+- Use `page` parameter for pagination
+
+### 6. `get_query_history`
+View previously executed queries in the session.
+- Shows execution time and status
+- Can include failed queries
+
+## Security Features
+
+### Multi-Layer Read-Only Protection
+1. **SQL Validation**: Parses and rejects write operations before execution
+2. **Transaction-Level**: Each query runs in `BEGIN TRANSACTION READ ONLY`
+3. **Session Settings**: Query timeouts and monitoring tags
+4. **Connection Validation**: Verifies read-only on connect
+5. **Comprehensive Blocking**: INSERT, UPDATE, DELETE, CREATE, DROP, ALTER, MERGE, TRUNCATE, GRANT, REVOKE, COPY, PUT, GET, REMOVE, CALL, EXECUTE
+
+### Query Safety
+- Detects CTEs with write operations
+- Blocks semicolon-separated statements
+- Validates entire query for write keywords
+- Clear error messages for rejected queries
+
+## Setup Instructions
+
+### 1. Generate Snowflake PAT
+1. Log into Snowsight
+2. Go to User Menu → My Profile
+3. Click "Programmatic Access"
+4. Click "Generate Token"
+5. Set expiration (30-90 days recommended)
+6. Copy token immediately (shown only once)
+
+### 2. Set Environment Variables
+```bash
+export SNOWFLAKE_ACCOUNT="xy12345.us-east-1"
+export SNOWFLAKE_USERNAME="user@company.com"
+export SNOWFLAKE_WAREHOUSE="COMPUTE_WH"
+export SNOWFLAKE_PAT="<your-token>"
+
+# Optional
+export MCP_TRANSPORT="stdio"  # or "http"
+export DEBUG="false"          # Set to true for debug logging
+export CACHE_TTL_DAYS="5"     # Schema cache TTL
+export MAX_QUERY_ROWS="100"   # Default page size
+```
+
+### 3. Configure Claude Desktop
+Add to Claude Desktop config file:
+```json
+{
+  "mcpServers": {
+    "snowflake-readonly": {
+      "command": "python",
+      "args": ["-m", "snowflake_mcp_server"],
+      "env": {
+        "SNOWFLAKE_ACCOUNT": "xy12345.us-east-1",
+        "SNOWFLAKE_USERNAME": "user@company.com",
+        "SNOWFLAKE_WAREHOUSE": "COMPUTE_WH",
+        "SNOWFLAKE_PAT": "${SNOWFLAKE_PAT}"
+      }
+    }
+  }
+}
+```
+
+### 4. Run the Server
+```bash
+# For local testing
+python main.py
+
+# Or using module
+python -m snowflake_mcp_server
+```
+
+## Usage Examples
+
+### First Time Setup
+1. Server starts and connects to Snowflake
+2. Run `refresh_catalog` to populate schema cache
+3. Use `inspect_schemas` to explore available databases
+4. Execute queries with `execute_query`
+
+### Common Workflows
+
+#### Find and Query a Table
+```python
+# Search for customer tables
+search_tables("customer")
+
+# Get table details
+get_table_schema("SALES_DB", "PUBLIC", "CUSTOMERS", include_sample=true)
+
+# Query the table
+execute_query("SELECT * FROM SALES_DB.PUBLIC.CUSTOMERS WHERE revenue > 10000")
+```
+
+#### Paginated Results
+```python
+# First page (automatic)
+execute_query("SELECT * FROM large_table")
+# Returns: First 100 rows, pagination info
+
+# Get next page
+execute_query("SELECT * FROM large_table", page=2)
+# Returns: Rows 101-200
+```
+
+## Development Commands
 
 ```bash
 # Install dependencies
-mise trust
-mise install
-uv sync
+pip install -r requirements.txt
 
-# Run the server
-MCP_HOST=127.0.0.1 python main.py
-```
+# Run with debug logging
+export DEBUG=true
+python main.py
 
-## Key Components
-
-### OAuth Authentication (`g2_mcp_server/app.py`)
-- Uses FastMCP OAuth integration with G2's MCP URL
-- Automatic token management and refresh
-- Base URL: `https://data.g2.com/api/v2`
-- OAuth endpoint: `https://mcp-dev.g2.com/mcp`
-
-### Manual Tools Architecture
-- Custom tool implementations in `g2_mcp_server/tools/`
-- Auto-discovery system automatically loads and registers all tools
-- Each tool module contains focused functionality for specific G2 API domains
-- Tools are manually crafted for optimal parameter handling and documentation
-
-### Available Tools
-
-#### Business Intelligence Tools (`bi_tools.py`)
-- **`browse_buyer_intent_interactions_tool`**: OLAP-style query tool for buyer intent data
-  - Supports dimensions, measures, and advanced filtering
-  - Time series and aggregated data analysis
-  - Comprehensive filter operators (eq, cont, gt, gteq, lt, lteq, etc.)
-  - Sorting and dimensional analysis capabilities
-
-#### Category Tools (`category_tools.py`)
-- **`list_categories`**: List all categories with filtering and field selection
-- **`show_category`**: Retrieve detailed information for a specific category
-- Supports relationship inclusion (products, children, ancestors, descendants, parent)
-
-#### Product Tools (`product_tools.py`)
-- **`list_products`**: List all products with comprehensive filtering options
-- **`list_my_products`**: List products owned by the current account
-- **`show_product`**: Retrieve detailed information for a specific product
-- Advanced filtering by category, ratings, vendor, and more
-
-#### Review Tools (`review_tools.py`)
-- **`list_product_reviews`**: Get reviews for specific products
-- **`show_product_review`**: Get specific product review for current user
-- Support for both standard and market intelligence serializers
-- Flexible field selection and relationship inclusion
-
-#### Vendor Tools (`vendor_tools.py`)
-- **`list_vendors`**: List all vendors with timestamp filtering
-- **`show_vendor`**: Retrieve detailed information for a specific vendor
-- Support for product relationships and comprehensive field selection
-
-### Configuration (`g2_mcp_server/config.py`)
-- `Config` - Pydantic model for configuration with validation
-- Environment variable support with defaults
-- Validation for URLs, timeouts, and other parameters
-
-## Testing
-
-To test the server:
-1. Run the server with `MCP_HOST=127.0.0.1 python main.py`
-2. Connect via `npx @modelcontextprotocol/inspector`
-3. OAuth flow will handle authentication automatically
-4. Test with sample queries through the inspector
-
-## Common Commands
-
-```bash
-# Install dependencies (including dev tools)
-uv sync --extra dev
-
-# Run the server
-MCP_HOST=127.0.0.1 python main.py
-
-# Run via project script
-uv run server
-
-# Check dependencies
-uv tree
-
-# Lint and format
+# Check for issues
 ruff check
 ruff format
-
-# Run pre-commit hooks
-pre-commit run --all-files
-
-# Install pre-commit hooks (first time)
-pre-commit install
 ```
 
-## Configuration Notes
+## Troubleshooting
 
-- Server name: "G2 MCP Server"
-- Uses FastMCP framework with OAuth and manual tools integration
-- All API requests include proper OAuth authentication
-- Request/response logging for debugging via `log_utils.py`
-- Automatic redirect following
-- Tool auto-discovery system for easy extensibility
+### Connection Issues
+- Verify PAT is valid and not expired
+- Check account format (include region)
+- Ensure warehouse is running
+- Verify network access to Snowflake
 
-## Code Quality
+### Query Errors
+- All queries must be read-only
+- Run `refresh_catalog` if cache is empty
+- Check query syntax with `SHOW` commands
+- Use fully qualified table names when needed
 
-- **Ruff**: Configured for linting and formatting with modern Python standards
-- **Pre-commit**: Automated code quality checks on every commit
-- **Type Safety**: Modern Python type hints using `|` union syntax
+### Cache Issues
+- Cache stored in `~/.snowflake_mcp/cache/`
+- Delete cache file to force full refresh
+- Cache auto-expires after 5 days
+- Manual refresh with `refresh_catalog(force=true)`
 
-## Environment Variables
+## Important Notes
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `G2_BASE_URL` | No | G2 API base URL (default: https://data.g2.com/api/v2) |
-| `G2_TIMEOUT` | No | Request timeout in seconds (default: 30) |
-| `G2_USER_AGENT` | No | User agent for requests (default: G2-MCP-Server/1.0) |
-| `DEBUG` | No | Enable debug logging (default: true) |
-| `G2_MAX_PAGE_SIZE` | No | Maximum page size for requests (default: 100) |
-| `G2_MCP_URL` | No | OAuth MCP URL (default: https://mcp-dev.g2.com/mcp) |
-| `G2_API_TOKEN` | No | API token for G2 API authentication (used in STDIO mode) |
-| `G2_IS_RUNNING_IN_DOCKER` | No | Docker environment flag (default: false) |
-| `G2_IS_RUNNING_IN_DOCKER_OR_K8S` | No | Container environment flag (default: false) |
-
-**Note**: Authentication is handled via Bearer Token headers for HTTP transports, or via `G2_API_TOKEN` environment variable for STDIO transport.
+- **POC Implementation**: This is a demo, not production-ready
+- **Read-Only**: Absolutely no write operations allowed
+- **PAT Security**: Never commit tokens to git
+- **Cache Required**: Must run `refresh_catalog` before queries
+- **Pagination**: Large results are automatically paginated
+- **Session Scope**: Query history is per-session only
