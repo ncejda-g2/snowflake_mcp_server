@@ -1,0 +1,93 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "g2_mcp_server"
+version = "0.1.0"
+description = "A G2 software reviews and ratings MCP server"
+authors = [{ name = "Tomas Caraccia", email = "tcaraccia@g2.com" }]
+requires-python = ">=3.12"
+dependencies = [
+  "aiohttp>=3.12.13",
+  "fastmcp>=2.9.2",
+  "httpx>=0.28.1",
+  "pydantic>=2.0.0",
+  "pyyaml>=6.0.2",
+  "starlette>=0.47.1",
+  "uvicorn>=0.34.3",
+  "newrelic>=10.13.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "ruff>=0.7.0",
+  "pre-commit>=3.0.0",
+  "mypy>=1.0.0",
+  "pytest>=8.4.1",
+  "pytest-asyncio>=0.23.0",
+  "pytest-mock>=3.12.0",
+  "pytest-httpx>=0.30.0",
+  "pytest-cov>=4.1.0"
+  ]
+
+[project.scripts]
+server = "server.app:main"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 88
+
+[tool.ruff.lint]
+select = [
+  "E",   # pycodestyle errors
+  "W",   # pycodestyle warnings
+  "F",   # pyflakes
+  "I",   # isort
+  "B",   # flake8-bugbear
+  "C4",  # flake8-comprehensions
+  "UP",  # pyupgrade
+  "ARG", # flake8-unused-arguments
+  "SIM", # flake8-simplify
+  "ICN", # flake8-import-conventions
+  "T20", # flake8-print
+]
+ignore = [
+  "E501", # line too long, handled by formatter
+  "B008", # do not perform function calls in argument defaults
+  "T201", # print found
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+
+[tool.ruff.lint.isort]
+known-first-party = ["g2_mcp_server"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["server"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = [
+  "--strict-markers",
+  "--strict-config",
+  "-ra",
+  "--cov=server",
+  "--cov-report=term-missing",
+  "--cov-report=html",
+  "--cov-report=xml",
+  "--junit-xml=test-results.xml",
+]
+markers = [
+  "unit: Unit tests",
+  "integration: Integration tests",
+  "slow: Slow tests",
+]
+
+[tool.coverage.run]
+relative_files = true
