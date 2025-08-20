@@ -120,7 +120,13 @@ Choose one of the following installation methods:
 
 2. **Add the MCP server configuration**
 
-   For venv installation:
+   Choose the configuration that matches your installation method:
+
+   <details>
+   <summary><b>For Python venv installation</b> (Option 1 above)</summary>
+   
+   <br>
+   
    ```json
    {
      "mcpServers": {
@@ -136,8 +142,14 @@ Choose one of the following installation methods:
      }
    }
    ```
+   
+   </details>
 
-   For uv installation:
+   <details>
+   <summary><b>For uv installation</b> (Option 2 above)</summary>
+   
+   <br>
+   
    ```json
    {
      "mcpServers": {
@@ -154,9 +166,15 @@ Choose one of the following installation methods:
    }
    ```
    
-   Note: The `--directory` flag tells uv which project directory to use, ensuring it finds the correct virtual environment.
+   **Note:** The `--directory` flag tells uv which project directory to use, ensuring it finds the correct virtual environment.
+   
+   </details>
 
-   For Conda installation:
+   <details>
+   <summary><b>For Conda installation</b> (Option 3 above)</summary>
+   
+   <br>
+   
    ```json
    {
      "mcpServers": {
@@ -173,7 +191,9 @@ Choose one of the following installation methods:
    }
    ```
    
-   Note: Find your conda environment path with `conda info --envs` after activating the environment.
+   **Note:** Find your conda environment path with `conda info --envs` after activating the environment.
+   
+   </details>
 
 3. **Update the configuration values**
    - `SNOWFLAKE_ACCOUNT`: Your Snowflake account identifier (e.g., "xy12345.us-east-1")
