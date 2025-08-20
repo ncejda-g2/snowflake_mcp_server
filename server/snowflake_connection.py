@@ -339,11 +339,15 @@ class SnowflakeConnection:
                 if schema:
                     cursor.execute(f"USE SCHEMA {schema}")
 
-                # Add pagination to query if not already present
-                paginated_sql = self._add_pagination(sql, page_size, offset)
-
-                # Execute query
-                cursor.execute(paginated_sql)
+                # Add pagination to query only if we're limiting rows
+                if max_rows is not None or offset > 0:
+                    paginated_sql = self._add_pagination(sql, page_size, offset)
+                    self.logger.debug(f"Executing with pagination: max_rows={max_rows}, page_size={page_size}, offset={offset}")
+                    cursor.execute(paginated_sql)
+                else:
+                    # Execute without pagination for unlimited results
+                    self.logger.debug(f"Executing without pagination: max_rows={max_rows}")
+                    cursor.execute(sql)
 
                 # Get query ID for monitoring
                 query_id = cursor.sfqid if hasattr(cursor, "sfqid") else None
@@ -378,13 +382,8 @@ class SnowflakeConnection:
                     if max_rows is None:
                         results = cursor.fetchall()
                         row_count = len(results)
-                        # Check if there might be more rows
-                        if row_count == page_size:
-                            # Try to fetch one more to check
-                            cursor.execute(
-                                self._add_pagination(sql, 1, offset + page_size)
-                            )
-                            has_more_rows = len(cursor.fetchall()) > 0
+                        # When fetching all, there are no more rows by definition
+                        has_more_rows = False
                     else:
                         fetch_count = min(max_rows, page_size)
                         results = cursor.fetchmany(fetch_count)

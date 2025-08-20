@@ -87,7 +87,7 @@ async def refresh_catalog(
                     logger.debug(f"Skipping already processed database: {database}")
                     continue
                 
-                logger.debug(f"Querying INFORMATION_SCHEMA for database: {database}")
+                logger.info(f"Querying INFORMATION_SCHEMA for database: {database}")
                 
                 # Query to get all tables and columns in this database
                 # Join TABLES and COLUMNS to get complete metadata
@@ -115,6 +115,7 @@ async def refresh_catalog(
                 ORDER BY c.TABLE_CATALOG, c.TABLE_SCHEMA, c.TABLE_NAME, c.ORDINAL_POSITION
                 """
                 
+                logger.info(f"Executing query for {database} with max_rows=None")
                 result = connection.execute_query(query, max_rows=None)
                 
                 if result.data:
@@ -128,7 +129,7 @@ async def refresh_catalog(
                     if database in failed_databases:
                         del failed_databases[database]
                     
-                    logger.debug(f"Retrieved {len(result.data)} column definitions from {database}")
+                    logger.info(f"Retrieved {len(result.data)} column definitions from {database}")
                 
             except Exception as e:
                 error_msg = f"Failed to query database {database}: {str(e)}"
