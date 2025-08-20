@@ -19,7 +19,12 @@ A secure, read-only Model Context Protocol (MCP) server for Snowflake data acces
 
 ## Installation Options
 
-### Option 1: Using Python venv (Recommended for most users)
+Choose one of the following installation methods:
+
+<details>
+<summary><b>Option 1: Using Python venv</b> (Recommended for most users)</summary>
+
+<br>
 
 1. **Clone the repository**
    ```bash
@@ -52,7 +57,12 @@ A secure, read-only Model Context Protocol (MCP) server for Snowflake data acces
    python main.py --help
    ```
 
-### Option 2: Using uv (Fast Python package manager)
+</details>
+
+<details>
+<summary><b>Option 2: Using uv</b> (Fast Python package manager)</summary>
+
+<br>
 
 1. **Install uv** (if not already installed)
    ```bash
@@ -81,7 +91,12 @@ A secure, read-only Model Context Protocol (MCP) server for Snowflake data acces
    uv run python main.py --help
    ```
 
-### Option 3: Using Conda/Miniconda
+</details>
+
+<details>
+<summary><b>Option 3: Using Conda/Miniconda</b></summary>
+
+<br>
 
 1. **Create conda environment**
    ```bash
@@ -93,6 +108,8 @@ A secure, read-only Model Context Protocol (MCP) server for Snowflake data acces
    ```bash
    pip install -r requirements.txt
    ```
+
+</details>
 
 ## Configure Claude Desktop
 
