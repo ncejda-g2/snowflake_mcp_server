@@ -5,18 +5,16 @@ A secure, read-only Model Context Protocol (MCP) server for Snowflake data acces
 ## Features
 
 - 🔒 **Strict Read-Only Access**: Multiple layers of protection against write operations
-- 🔑 **PAT Authentication**: Uses Snowflake Programmatic Access Tokens
+- 🔑 **External Browser Authentication**: Uses Snowflake's secure browser-based SSO
 - 💾 **Smart Caching**: 5-day schema cache for fast metadata access
 - 📄 **Pagination**: Automatic pagination for large result sets
 - 🛡️ **Query Validation**: Comprehensive SQL validation before execution
 
 ## Quick Start
 
-### 1. Generate Snowflake PAT
+### 1. Snowflake Authentication
 
-1. Log into Snowsight
-2. User Menu → My Profile → Programmatic Access
-3. Generate Token (save it immediately!)
+This server uses external browser authentication (SSO). When you first connect, your default browser will open to authenticate with Snowflake.
 
 ### 2. Set Environment Variables
 
@@ -24,7 +22,6 @@ A secure, read-only Model Context Protocol (MCP) server for Snowflake data acces
 export SNOWFLAKE_ACCOUNT="xy12345.us-east-1"
 export SNOWFLAKE_USERNAME="user@company.com"
 export SNOWFLAKE_WAREHOUSE="COMPUTE_WH"
-export SNOWFLAKE_PAT="<your-token>"
 ```
 
 ### 3. Install Dependencies
@@ -52,8 +49,7 @@ Add to your Claude Desktop config:
       "env": {
         "SNOWFLAKE_ACCOUNT": "xy12345.us-east-1",
         "SNOWFLAKE_USERNAME": "user@company.com",
-        "SNOWFLAKE_WAREHOUSE": "COMPUTE_WH",
-        "SNOWFLAKE_PAT": "${SNOWFLAKE_PAT}"
+        "SNOWFLAKE_WAREHOUSE": "COMPUTE_WH"
       }
     }
   }

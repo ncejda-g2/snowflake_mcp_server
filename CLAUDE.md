@@ -1,12 +1,12 @@
 # Snowflake MCP Server - Claude Development Guide
 
-This is a Model Context Protocol (MCP) server that provides secure, read-only access to Snowflake databases using Programmatic Access Token (PAT) authentication.
+This is a Model Context Protocol (MCP) server that provides secure, read-only access to Snowflake databases using external browser authentication (SSO).
 
 ## Project Overview
 
 A POC/demo implementation of an MCP server for Snowflake that:
 - Enforces strict read-only access at multiple levels
-- Uses PAT authentication for security
+- Uses external browser authentication (SSO) for security
 - Provides intelligent schema discovery and caching
 - Supports paginated query execution
 - Validates all SQL queries for safety
@@ -84,20 +84,14 @@ View previously executed queries in the session.
 
 ## Setup Instructions
 
-### 1. Generate Snowflake PAT
-1. Log into Snowsight
-2. Go to User Menu → My Profile
-3. Click "Programmatic Access"
-4. Click "Generate Token"
-5. Set expiration (30-90 days recommended)
-6. Copy token immediately (shown only once)
+### 1. Snowflake Authentication
+This server uses external browser authentication (SSO). When you first connect, your default browser will open to authenticate with Snowflake. No tokens or passwords need to be stored.
 
 ### 2. Set Environment Variables
 ```bash
 export SNOWFLAKE_ACCOUNT="xy12345.us-east-1"
 export SNOWFLAKE_USERNAME="user@company.com"
 export SNOWFLAKE_WAREHOUSE="COMPUTE_WH"
-export SNOWFLAKE_PAT="<your-token>"
 
 # Optional
 export MCP_TRANSPORT="stdio"  # or "http"
@@ -117,8 +111,7 @@ Add to Claude Desktop config file:
       "env": {
         "SNOWFLAKE_ACCOUNT": "xy12345.us-east-1",
         "SNOWFLAKE_USERNAME": "user@company.com",
-        "SNOWFLAKE_WAREHOUSE": "COMPUTE_WH",
-        "SNOWFLAKE_PAT": "${SNOWFLAKE_PAT}"
+        "SNOWFLAKE_WAREHOUSE": "COMPUTE_WH"
       }
     }
   }
@@ -185,7 +178,7 @@ ruff format
 ## Troubleshooting
 
 ### Connection Issues
-- Verify PAT is valid and not expired
+- Ensure browser can open for authentication
 - Check account format (include region)
 - Ensure warehouse is running
 - Verify network access to Snowflake
@@ -206,7 +199,7 @@ ruff format
 
 - **POC Implementation**: This is a demo, not production-ready
 - **Read-Only**: Absolutely no write operations allowed
-- **PAT Security**: Never commit tokens to git
+- **Browser Auth**: Uses secure SSO through your default browser
 - **Cache Required**: Must run `refresh_catalog` before queries
 - **Pagination**: Large results are automatically paginated
 - **Session Scope**: Query history is per-session only
