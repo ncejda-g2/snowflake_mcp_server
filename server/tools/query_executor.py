@@ -255,31 +255,36 @@ async def validate_query_without_execution(
     schema: Optional[str] = None
 ) -> Dict:
     """
-    Validate and prepare a SQL query without executing it.
+    Generate and prepare a SQL query without executing it.
     
-    This tool validates a query for safety (read-only), syntax, and schema references,
-    but does not execute it. Useful for generating queries that users want to review
-    or execute elsewhere.
+    This tool can generate ANY type of SQL query (including write operations like INSERT, 
+    UPDATE, DELETE) but does not execute it. Useful for generating queries that users 
+    want to review and execute elsewhere after manual review.
+    
+    Note: While this tool can generate write queries, the execute_query tool will still
+    block them from actual execution for safety.
     
     Args:
         connection: Active Snowflake connection (for context, not execution)
         cache: Schema cache instance
-        sql: SQL query to validate
+        sql: SQL query to validate and prepare
         database: Optional database context
         schema: Optional schema context
         
     Returns:
         Dictionary with validation results and the prepared query
     """
-    # Validate the query for safety (read-only check)
+    # Check query type but don't block write operations in this tool
     from server.snowflake_connection import QueryValidator
     validator = QueryValidator()
     is_valid, error_msg, query_type = validator.validate(sql)
     
+    # For this tool, we allow all query types but note whether it's read-only
     validation_result = {
         "is_read_only": is_valid,
         "query_type": str(query_type),
-        "safety_message": error_msg if not is_valid else "Query is read-only and safe"
+        "execution_allowed": is_valid,  # Only read-only queries can be executed via execute_query
+        "message": "Query generated successfully. Write queries cannot be executed through the MCP server." if not is_valid else "Query is read-only and can be executed via execute_query"
     }
     
     # Check if cache is populated (recommended but not required for validation)
@@ -340,14 +345,17 @@ async def validate_query_without_execution(
     if database and schema and not any(x in sql.upper() for x in [f"{database.upper()}.{schema.upper()}", "USE DATABASE", "USE SCHEMA"]):
         hints.append(f"Consider using fully qualified table names: {database}.{schema}.table_name")
     
-    if "LIMIT" not in sql.upper() and query_type == QueryValidator._identify_query_type(sql.upper()) and str(query_type) == "QueryType.SELECT":
+    if "LIMIT" not in sql.upper() and str(query_type) == "QueryType.SELECT":
         hints.append("Consider adding a LIMIT clause to control result size")
     
     if hints:
         response["hints"] = hints
     
-    # Add a note about execution
-    response["note"] = "This query has been validated but not executed. Use execute_query to run it."
+    # Add appropriate note about execution based on query type
+    if is_valid:
+        response["note"] = "This read-only query has been generated and can be executed using execute_query."
+    else:
+        response["note"] = "This write query has been generated but CANNOT be executed through the MCP server. Please review and execute it directly in Snowflake after manual verification."
     
     return response
 

@@ -270,25 +270,32 @@ async def execute_query_tool(
     name="validate_query_without_execution",
     description="""Generate and validate a SQL query without executing it.
     
-    This tool validates a query for safety (read-only), syntax, and provides
-    the prepared query text without running it. Useful when users want to
-    review queries before execution or run them elsewhere.
+    This tool can generate ANY type of SQL query including both read and write operations
+    (SELECT, INSERT, UPDATE, DELETE, etc.) but does NOT execute them. Useful for generating
+    queries that users want to review and execute elsewhere after manual verification.
+    
+    IMPORTANT: Write queries (INSERT, UPDATE, DELETE, etc.) can be generated here but
+    CANNOT be executed through the execute_query tool for safety reasons. Users must
+    execute write queries directly in Snowflake after manual review.
     
     Parameters:
-    - sql: SQL query to validate
+    - sql: SQL query to generate (read or write operations allowed)
     - database: Optional database context
     - schema: Optional schema context
     
     The tool will:
-    - Validate the query is read-only
-    - Check query type (SELECT, SHOW, etc.)
+    - Accept both read and write queries
+    - Check query type (SELECT, INSERT, UPDATE, DELETE, etc.)
     - Extract table references
     - Provide hints for improvement
-    - Return the formatted query ready for use
+    - Return the formatted query ready for manual review
+    - Indicate whether the query can be executed via execute_query (read-only) or not (write)
     
     Examples:
     - validate_query_without_execution("SELECT * FROM customers")
-    - validate_query_without_execution("SELECT COUNT(*) FROM orders", database="SALES_DB", schema="PUBLIC")
+    - validate_query_without_execution("INSERT INTO orders (id, amount) VALUES (1, 100.00)")
+    - validate_query_without_execution("UPDATE customers SET status = 'active' WHERE id = 123")
+    - validate_query_without_execution("DELETE FROM temp_data WHERE created < '2024-01-01'")
     """
 )
 async def validate_query_without_execution_tool(
@@ -296,7 +303,7 @@ async def validate_query_without_execution_tool(
     database: Optional[str] = None,
     schema: Optional[str] = None
 ) -> Dict[str, Any]:
-    """Validate and prepare a SQL query without executing it."""
+    """Generate and prepare a SQL query (read or write) without executing it."""
     try:
         initialize_resources()
     except Exception as e:
