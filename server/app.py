@@ -273,6 +273,55 @@ async def execute_query_tool(
     )
 
 
+# Tool: Validate Query Without Execution
+@mcp.tool(
+    name="validate_query_without_execution",
+    description="""Generate and validate a SQL query without executing it.
+    
+    This tool validates a query for safety (read-only), syntax, and provides
+    the prepared query text without running it. Useful when users want to
+    review queries before execution or run them elsewhere.
+    
+    Parameters:
+    - sql: SQL query to validate
+    - database: Optional database context
+    - schema: Optional schema context
+    
+    The tool will:
+    - Validate the query is read-only
+    - Check query type (SELECT, SHOW, etc.)
+    - Extract table references
+    - Provide hints for improvement
+    - Return the formatted query ready for use
+    
+    Examples:
+    - validate_query_without_execution("SELECT * FROM customers")
+    - validate_query_without_execution("SELECT COUNT(*) FROM orders", database="SALES_DB", schema="PUBLIC")
+    """
+)
+async def validate_query_without_execution_tool(
+    sql: str,
+    database: Optional[str] = None,
+    schema: Optional[str] = None
+) -> Dict[str, Any]:
+    """Validate and prepare a SQL query without executing it."""
+    try:
+        initialize_resources()
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Failed to initialize: {str(e)}"
+        }
+    
+    assert connection is not None and cache is not None
+    return await query_executor.validate_query_without_execution(
+        connection, cache,
+        sql=sql,
+        database=database,
+        schema=schema
+    )
+
+
 # Tool: Get Query History
 @mcp.tool(
     name="get_query_history",

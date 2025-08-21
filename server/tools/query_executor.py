@@ -3,6 +3,7 @@
 import hashlib
 import json
 import logging
+import re
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 
@@ -299,6 +300,111 @@ async def execute_query(
             "error_type": "execution_error",
             "sql": sql[:500] + ("..." if len(sql) > 500 else "")
         }
+
+
+async def validate_query_without_execution(
+    connection: SnowflakeConnection,
+    cache: SchemaCache,
+    sql: str,
+    database: Optional[str] = None,
+    schema: Optional[str] = None
+) -> Dict:
+    """
+    Validate and prepare a SQL query without executing it.
+    
+    This tool validates a query for safety (read-only), syntax, and schema references,
+    but does not execute it. Useful for generating queries that users want to review
+    or execute elsewhere.
+    
+    Args:
+        connection: Active Snowflake connection (for context, not execution)
+        cache: Schema cache instance
+        sql: SQL query to validate
+        database: Optional database context
+        schema: Optional schema context
+        
+    Returns:
+        Dictionary with validation results and the prepared query
+    """
+    # Validate the query for safety (read-only check)
+    from server.snowflake_connection import QueryValidator
+    validator = QueryValidator()
+    is_valid, error_msg, query_type = validator.validate(sql)
+    
+    validation_result = {
+        "is_read_only": is_valid,
+        "query_type": str(query_type),
+        "safety_message": error_msg if not is_valid else "Query is read-only and safe"
+    }
+    
+    # Check if cache is populated (recommended but not required for validation)
+    cache_status = {
+        "is_populated": not cache.is_empty(),
+        "is_expired": cache.is_expired() if not cache.is_empty() else None
+    }
+    
+    if cache.is_empty():
+        cache_status["warning"] = "Schema cache is empty. Consider running refresh_catalog for better validation."
+    
+    # Prepare the final query with context if provided
+    final_query = sql.strip()
+    if final_query.endswith(';'):
+        final_query = final_query[:-1]
+    
+    # Add database/schema context comment if provided
+    context_info = []
+    if database:
+        context_info.append(f"Database: {database}")
+    if schema:
+        context_info.append(f"Schema: {schema}")
+    
+    if context_info:
+        final_query = f"-- Context: {', '.join(context_info)}\n{final_query}"
+    
+    # Try to extract table references from the query (basic parsing)
+    table_references = []
+    try:
+        # Simple regex to find potential table names after FROM/JOIN
+        from_pattern = r'\b(?:FROM|JOIN)\s+([^\s,()]+)'
+        matches = re.findall(from_pattern, sql.upper())
+        for match in matches:
+            # Clean up and add to references
+            table_ref = match.strip().replace('"', '').replace('`', '')
+            if table_ref and not table_ref.startswith('('):
+                table_references.append(table_ref)
+    except Exception:
+        pass  # Ignore parsing errors
+    
+    # Build response
+    response = {
+        "status": "success",
+        "query": final_query,
+        "validation": validation_result,
+        "cache_status": cache_status,
+        "metadata": {
+            "database_context": database,
+            "schema_context": schema,
+            "table_references": list(set(table_references)) if table_references else [],
+            "query_length": len(sql),
+            "estimated_complexity": "simple" if len(table_references) <= 1 else "moderate" if len(table_references) <= 3 else "complex"
+        }
+    }
+    
+    # Add syntax hints if query might need adjustment
+    hints = []
+    if database and schema and not any(x in sql.upper() for x in [f"{database.upper()}.{schema.upper()}", "USE DATABASE", "USE SCHEMA"]):
+        hints.append(f"Consider using fully qualified table names: {database}.{schema}.table_name")
+    
+    if "LIMIT" not in sql.upper() and query_type == QueryValidator._identify_query_type(sql.upper()) and str(query_type) == "QueryType.SELECT":
+        hints.append("Consider adding a LIMIT clause to control result size")
+    
+    if hints:
+        response["hints"] = hints
+    
+    # Add a note about execution
+    response["note"] = "This query has been validated but not executed. Use execute_query to run it."
+    
+    return response
 
 
 async def get_query_history(
