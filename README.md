@@ -114,7 +114,7 @@ Choose one of the following installation methods:
 ## Configure Claude Desktop
 
 1. **Find your Claude Desktop configuration file**
-   - macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
+   - macOS: `~/Library/Application\ Support/Claude/claude_desktop_config.json`
    - Windows: `%APPDATA%\Claude\claude_desktop_config.json`
    - Linux: `~/.config/claude/claude_desktop_config.json`
 
