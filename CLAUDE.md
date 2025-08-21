@@ -8,7 +8,7 @@ A POC/demo implementation of an MCP server for Snowflake that:
 - Enforces strict read-only access at multiple levels
 - Uses external browser authentication (SSO) for security
 - Provides intelligent schema discovery and caching
-- Supports paginated query execution
+- Supports CSV export of query results
 - Validates all SQL queries for safety
 
 ## Project Structure
@@ -56,13 +56,19 @@ Get detailed column information for a specific table.
 - Optional sample data with `include_sample=true`
 
 ### 5. `execute_query`
-Execute read-only SQL queries with pagination.
+Execute read-only SQL queries.
 - Only allows SELECT, SHOW, DESCRIBE, WITH queries
 - Blocks all write operations
-- Returns 100 rows per page by default
-- Use `page` parameter for pagination
+- Returns all query results
+- Caches results for CSV export (if under 5GB)
 
-### 6. `get_query_history`
+### 6. `save_last_query_to_csv`
+Export the last query results to a CSV file.
+- Exports complete results from the last executed query
+- Includes column headers
+- Results must be under 5GB cache limit
+
+### 7. `get_query_history`
 View previously executed queries in the session.
 - Shows execution time and status
 - Can include failed queries
@@ -97,7 +103,7 @@ export SNOWFLAKE_WAREHOUSE="COMPUTE_WH"
 export MCP_TRANSPORT="stdio"  # or "http"
 export DEBUG="false"          # Set to true for debug logging
 export CACHE_TTL_DAYS="5"     # Schema cache TTL
-export MAX_QUERY_ROWS="100"   # Default page size
+# export CACHE_TTL_DAYS="5"    # Schema cache TTL
 ```
 
 ### 3. Configure Claude Desktop
@@ -149,15 +155,15 @@ get_table_schema("SALES_DB", "PUBLIC", "CUSTOMERS", include_sample=true)
 execute_query("SELECT * FROM SALES_DB.PUBLIC.CUSTOMERS WHERE revenue > 10000")
 ```
 
-#### Paginated Results
+#### Export Query Results
 ```python
-# First page (automatic)
-execute_query("SELECT * FROM large_table")
-# Returns: First 100 rows, pagination info
+# Execute a query
+execute_query("SELECT * FROM large_table LIMIT 1000")
+# Returns: All 1000 rows
 
-# Get next page
-execute_query("SELECT * FROM large_table", page=2)
-# Returns: Rows 101-200
+# Export to CSV
+save_last_query_to_csv("~/Downloads/results.csv")
+# Creates CSV file with all query results
 ```
 
 ## Development Commands
@@ -201,5 +207,5 @@ ruff format
 - **Read-Only**: Absolutely no write operations allowed
 - **Browser Auth**: Uses secure SSO through your default browser
 - **Cache Required**: Must run `refresh_catalog` before queries
-- **Pagination**: Large results are automatically paginated
+- **CSV Export**: Query results can be exported to CSV files
 - **Session Scope**: Query history is per-session only

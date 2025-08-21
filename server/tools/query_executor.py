@@ -4,19 +4,25 @@ import hashlib
 import json
 import logging
 import re
-from typing import Dict, List, Optional, Any
+import sys
+from typing import Dict, List, Optional, Any, Tuple
 from datetime import datetime
 
 from server.schema_cache import SchemaCache
 from server.snowflake_connection import SnowflakeConnection, QueryResult
 from server.tools.catalog_refresh import refresh_catalog
+from server.constants import MAX_CACHE_SIZE_BYTES
 
 
 logger = logging.getLogger(__name__)
 
-# In-memory cache for query results (for pagination)
-query_results_cache: Dict[str, Dict[str, Any]] = {}
-MAX_CACHE_SIZE = 10  # Maximum number of cached queries
+# In-memory cache for the last query results (for CSV export)
+last_query_cache: Optional[Dict[str, Any]] = None
+
+
+def _estimate_size(obj: Any) -> int:
+    """Estimate the memory size of an object in bytes."""
+    return sys.getsizeof(json.dumps(obj, default=str))
 
 
 def _format_value(value: Any) -> Any:
@@ -93,15 +99,13 @@ async def execute_query(
     sql: str,
     database: Optional[str] = None,
     schema: Optional[str] = None,
-    page: int = 1,
-    page_size: int = 100,
     format_results: bool = True
 ) -> Dict:
     """
-    Execute a read-only SQL query with safety checks and pagination.
+    Execute a read-only SQL query with safety checks.
     
     This tool validates queries for read-only operations, executes them,
-    and returns paginated results with metadata.
+    and returns all results with metadata.
     
     Args:
         connection: Active Snowflake connection
@@ -109,12 +113,10 @@ async def execute_query(
         sql: SQL query to execute
         database: Optional database context
         schema: Optional schema context
-        page: Page number (1-based) for pagination
-        page_size: Number of rows per page
         format_results: Whether to format results as a table
         
     Returns:
-        Dictionary with query results, pagination info, and metadata
+        Dictionary with query results and metadata
     """
     # First validate the query for safety (before checking cache)
     from server.snowflake_connection import QueryValidator
@@ -139,148 +141,91 @@ async def execute_query(
         logger.warning("Schema cache is expired, consider refreshing")
     
     try:
-        # Generate query ID for caching
-        query_id = hashlib.md5(f"{sql}{database}{schema}".encode()).hexdigest()
-        
-        # Check if we have cached results for pagination
-        if query_id in query_results_cache and page > 1:
-            cached = query_results_cache[query_id]
-            
-            # Calculate pagination
-            total_rows = len(cached["all_results"])
-            total_pages = (total_rows + page_size - 1) // page_size
-            
-            if page > total_pages:
-                return {
-                    "status": "error",
-                    "message": f"Page {page} exceeds total pages ({total_pages})",
-                    "total_pages": total_pages
-                }
-            
-            start_idx = (page - 1) * page_size
-            end_idx = min(start_idx + page_size, total_rows)
-            page_results = cached["all_results"][start_idx:end_idx]
-            
-            # Format results
-            formatted_data = []
-            for row in page_results:
-                formatted_row = {k: _format_value(v) for k, v in row.items()}
-                formatted_data.append(formatted_row)
-            
-            response = {
-                "status": "success",
-                "query_id": query_id,
-                "data": formatted_data,
-                "columns": cached["columns"],
-                "pagination": {
-                    "page": page,
-                    "page_size": page_size,
-                    "total_rows": total_rows,
-                    "total_pages": total_pages,
-                    "has_more": page < total_pages,
-                    "rows_in_page": len(page_results)
-                },
-                "source": "cache",
-                "message": f"Showing rows {start_idx + 1}-{end_idx} of {total_rows}"
-            }
-            
-            if format_results:
-                response["formatted_table"] = _format_results(page_results, cached["columns"])
-            
-            return response
-        
-        # Execute new query
-        offset = (page - 1) * page_size if page > 1 else 0
+        # Execute query
         result = connection.execute_query(
             sql=sql,
             database=database,
-            schema=schema,
-            page_size=page_size,
-            offset=offset
+            schema=schema
         )
         
         if not result.data:
+            # No results, but still clear the cache for consistency
+            global last_query_cache
+            last_query_cache = None
+            
             return {
                 "status": "success",
-                "query_id": query_id,
                 "data": [],
                 "columns": result.columns,
                 "message": "Query executed successfully but returned no results",
                 "execution_time": result.execution_time
             }
         
-        # For first page, cache the full results for potential pagination
-        if page == 1:
-            # Try to get more results to check total count
-            full_result = connection.execute_query(
-                sql=sql,
-                database=database,
-                schema=schema,
-                max_rows=10000  # Reasonable limit for caching
-            )
-            
-            # Cache results
-            query_results_cache[query_id] = {
-                "all_results": full_result.data,
-                "columns": full_result.columns,
+        # Check if results exceed cache size limit for CSV export
+        cache_data = {
+            "all_results": result.data,
+            "columns": result.columns,
+            "sql": sql,
+            "database": database,
+            "schema": schema,
+            "cached_at": datetime.now().isoformat(),
+            "execution_time": result.execution_time,
+            "query_id": result.query_id
+        }
+        
+        estimated_size = _estimate_size(cache_data)
+        cache_exceeded = estimated_size > MAX_CACHE_SIZE_BYTES
+        
+        # Update last_query_cache for CSV export
+        if cache_exceeded:
+            # Store metadata only in last_query_cache with warning
+            last_query_cache = {
+                "status": "size_exceeded",
+                "message": f"Query results ({estimated_size / (1024**3):.2f}GB) exceed cache limit ({MAX_CACHE_SIZE_BYTES / (1024**3):.2f}GB)",
                 "sql": sql,
                 "database": database,
                 "schema": schema,
-                "cached_at": datetime.now().isoformat()
+                "cached_at": datetime.now().isoformat(),
+                "row_count": len(result.data)
             }
-            
-            # Limit cache size
-            if len(query_results_cache) > MAX_CACHE_SIZE:
-                # Remove oldest cached query
-                oldest_key = next(iter(query_results_cache))
-                del query_results_cache[oldest_key]
-                logger.debug(f"Removed oldest cached query: {oldest_key}")
-            
-            # Use full results for response
-            total_rows = len(full_result.data)
-            page_results = full_result.data[:page_size]
+            logger.warning(f"Query results too large for caching: {estimated_size / (1024**3):.2f}GB")
+            csv_available = False
+            csv_message = f"Results too large for CSV export ({estimated_size / (1024**3):.2f}GB exceeds {MAX_CACHE_SIZE_BYTES / (1024**3):.2f}GB limit)"
         else:
-            total_rows = len(result.data)
-            page_results = result.data
-        
-        # Calculate pagination info
-        total_pages = (total_rows + page_size - 1) // page_size
+            # Store full results for CSV export
+            last_query_cache = cache_data
+            logger.debug(f"Cached query results for CSV export: {estimated_size / (1024**2):.2f}MB")
+            csv_available = True
+            csv_message = "Results cached and ready for CSV export using save_last_query_to_csv"
         
         # Format results for JSON
         formatted_data = []
-        for row in page_results:
+        for row in result.data:
             formatted_row = {k: _format_value(v) for k, v in row.items()}
             formatted_data.append(formatted_row)
         
         response = {
             "status": "success",
-            "query_id": query_id,
             "data": formatted_data,
             "columns": result.columns,
-            "pagination": {
-                "page": page,
-                "page_size": page_size,
-                "total_rows": total_rows,
-                "total_pages": total_pages,
-                "has_more": page < total_pages or result.has_more_rows,
-                "rows_in_page": len(page_results)
-            },
+            "row_count": len(result.data),
             "execution_time": result.execution_time,
-            "source": "query",
-            "message": f"Showing rows {(page-1)*page_size + 1}-{(page-1)*page_size + len(page_results)} of {total_rows}"
+            "message": f"Query executed successfully, returned {len(result.data)} rows",
+            "csv_export": {
+                "available": csv_available,
+                "message": csv_message
+            },
+            "query_metadata": {
+                "sql": sql[:500] + ("..." if len(sql) > 500 else ""),
+                "database_context": database,
+                "schema_context": schema,
+                "query_id": result.query_id
+            }
         }
         
         # Add formatted table if requested
         if format_results:
-            response["formatted_table"] = _format_results(page_results, result.columns)
-        
-        # Add query metadata
-        response["query_metadata"] = {
-            "sql": sql[:500] + ("..." if len(sql) > 500 else ""),
-            "database_context": database,
-            "schema_context": schema,
-            "query_id": result.query_id
-        }
+            response["formatted_table"] = _format_results(result.data, result.columns)
         
         return response
         
@@ -405,6 +350,16 @@ async def validate_query_without_execution(
     response["note"] = "This query has been validated but not executed. Use execute_query to run it."
     
     return response
+
+
+def get_last_query_cache() -> Optional[Dict[str, Any]]:
+    """
+    Get the cached results from the last executed query.
+    
+    Returns:
+        The cached query data or None if no cache exists
+    """
+    return last_query_cache
 
 
 async def get_query_history(

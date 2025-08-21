@@ -13,7 +13,8 @@ from server.tools import (
     catalog_refresh,
     schema_inspector,
     table_inspector,
-    query_executor
+    query_executor,
+    save_to_csv
 )
 
 # Initialize configuration and logging
@@ -98,6 +99,9 @@ async def refresh_catalog_tool(force: bool = False, resume: bool = True) -> Dict
     
     This tool provides a structured view of available database objects with optional
     filtering. Results are retrieved from the cache for fast access.
+    
+    NOTE: When filtering by database_pattern, column counts are omitted to reduce 
+    response size and avoid token limits.
     
     Parameters:
     - database_pattern: Filter databases by pattern (case-insensitive substring match)
@@ -215,7 +219,7 @@ async def get_table_schema_tool(
     name="execute_query",
     description="""Execute a read-only SQL query on Snowflake.
     
-    This tool validates queries for safety, executes them, and returns paginated results.
+    This tool validates queries for safety, executes them, and returns all results.
     Only SELECT, SHOW, DESCRIBE, and WITH queries are allowed.
     
     IMPORTANT: The schema cache must be populated before executing queries.
@@ -224,27 +228,23 @@ async def get_table_schema_tool(
     Parameters:
     - sql: SQL query to execute (SELECT, SHOW, DESCRIBE, or WITH)
     - database: Optional database context
-    - schema: Optional schema context  
-    - page: Page number for pagination (default: 1)
-    - page_size: Rows per page (default: 100, max: 1000)
+    - schema: Optional schema context
     
-    Pagination:
-    - First call returns page 1 with pagination metadata
-    - Use page parameter to fetch subsequent pages
-    - Check pagination.has_more to see if more pages exist
+    Returns:
+    - All query results (respects LIMIT clause if present in SQL)
+    - Results are cached for CSV export if under 5GB
+    - Use save_last_query_to_csv to export results
     
     Examples:
     - execute_query("SELECT * FROM SALES_DB.PUBLIC.CUSTOMERS LIMIT 10")
     - execute_query("SELECT COUNT(*) FROM orders", database="SALES_DB", schema="PUBLIC")
-    - execute_query("SELECT * FROM large_table", page=2)  # Get second page
+    - execute_query("SELECT * FROM large_table LIMIT 1000")
     """
 )
 async def execute_query_tool(
     sql: str,
     database: Optional[str] = None,
-    schema: Optional[str] = None,
-    page: int = 1,
-    page_size: int = 100
+    schema: Optional[str] = None
 ) -> Dict[str, Any]:
     """Execute a read-only SQL query."""
     try:
@@ -255,20 +255,12 @@ async def execute_query_tool(
             "message": f"Failed to initialize: {str(e)}"
         }
     
-    # Validate page_size
-    if page_size > 1000:
-        page_size = 1000
-    elif page_size < 1:
-        page_size = 100
-    
     assert connection is not None and cache is not None
     return await query_executor.execute_query(
         connection, cache,
         sql=sql,
         database=database,
         schema=schema,
-        page=page,
-        page_size=page_size,
         format_results=True
     )
 
@@ -360,6 +352,40 @@ async def get_query_history_tool(
     )
 
 
+# Tool: Save Last Query to CSV
+@mcp.tool(
+    name="save_last_query_to_csv",
+    description="""Save the last executed query results to a CSV file.
+    
+    This tool exports the complete results from the most recently executed query
+    to a CSV file at the specified path. The query must have been executed 
+    successfully and its results must be within the 5GB cache size limit.
+    
+    Features:
+    - Exports ALL rows from the last query
+    - Includes column headers
+    - Uses comma delimiter
+    - Handles NULL values as empty strings
+    - Formats datetime values in ISO format
+    
+    Parameters:
+    - file_path: The absolute or relative path where the CSV file should be saved
+    
+    Requirements:
+    - A query must have been executed successfully using execute_query
+    - Query results must be under 5GB (cache limit)
+    
+    Examples:
+    - save_last_query_to_csv("~/Downloads/customers.csv")
+    - save_last_query_to_csv("/tmp/query_results.csv")
+    - save_last_query_to_csv("./data/export.csv")
+    """
+)
+async def save_last_query_to_csv_tool(
+    file_path: str
+) -> Dict[str, Any]:
+    """Save the last query results to a CSV file."""
+    return await save_to_csv.save_last_query_to_csv(file_path)
 
 
 def main():

@@ -290,23 +290,17 @@ class SnowflakeConnection:
         sql: str,
         database: Optional[str] = None,
         schema: Optional[str] = None,
-        max_rows: Optional[int] = None,
-        page_size: int = 100,
-        offset: int = 0,
     ) -> QueryResult:
         """
-        Execute a read-only SQL query with pagination support.
+        Execute a read-only SQL query.
 
         Args:
             sql: SQL query to execute
             database: Optional database to use
             schema: Optional schema to use
-            max_rows: Maximum total rows to fetch (None for all)
-            page_size: Number of rows per page for pagination
-            offset: Number of rows to skip (for pagination)
 
         Returns:
-            QueryResult object with pagination info
+            QueryResult object with query results
 
         Raises:
             ValueError: If query contains write operations
@@ -339,15 +333,9 @@ class SnowflakeConnection:
                 if schema:
                     cursor.execute(f"USE SCHEMA {schema}")
 
-                # Add pagination to query only if we're limiting rows
-                if max_rows is not None or offset > 0:
-                    paginated_sql = self._add_pagination(sql, page_size, offset)
-                    self.logger.debug(f"Executing with pagination: max_rows={max_rows}, page_size={page_size}, offset={offset}")
-                    cursor.execute(paginated_sql)
-                else:
-                    # Execute without pagination for unlimited results
-                    self.logger.debug(f"Executing without pagination: max_rows={max_rows}")
-                    cursor.execute(sql)
+                # Execute the query as-is
+                self.logger.debug(f"Executing query: {sql[:100]}...")
+                cursor.execute(sql)
 
                 # Get query ID for monitoring
                 query_id = cursor.sfqid if hasattr(cursor, "sfqid") else None
@@ -379,16 +367,10 @@ class SnowflakeConnection:
                     QueryType.DESCRIBE,
                     QueryType.WITH,
                 ):
-                    if max_rows is None:
-                        results = cursor.fetchall()
-                        row_count = len(results)
-                        # When fetching all, there are no more rows by definition
-                        has_more_rows = False
-                    else:
-                        fetch_count = min(max_rows, page_size)
-                        results = cursor.fetchmany(fetch_count)
-                        row_count = len(results)
-                        has_more_rows = row_count == fetch_count
+                    # Fetch all results
+                    results = cursor.fetchall()
+                    row_count = len(results)
+                    has_more_rows = False
 
                 execution_time = time.time() - start_time
 
@@ -440,20 +422,6 @@ class SnowflakeConnection:
             self.logger.error(f"Query execution failed: {str(e)}")
             raise
 
-    def _add_pagination(self, sql: str, limit: int, offset: int) -> str:
-        """Add LIMIT and OFFSET to query if not present."""
-        sql_upper = sql.upper().strip()
-
-        # Check if query already has LIMIT
-        if "LIMIT" in sql_upper:
-            return sql
-
-        # Add pagination
-        sql = sql.rstrip().rstrip(";")
-        if offset > 0:
-            return f"{sql} LIMIT {limit} OFFSET {offset}"
-        else:
-            return f"{sql} LIMIT {limit}"
 
     def execute_query_stream(
         self,
