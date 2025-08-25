@@ -13,9 +13,15 @@ A secure, read-only Model Context Protocol (MCP) server for Snowflake data acces
 ## Prerequisites
 
 - Python 3.12 or higher
-- Claude Desktop installed
 - Snowflake account with SSO access
 - Git (for cloning the repository)
+- One of the following AI platforms that support MCP servers:
+  1. Claude Code
+  2. Claude Desktop (Pro)
+  3. Gemini CLI
+  4. Cursor CLI
+  5. Codex CLI with ChatGPT Pro
+  6. Or your choice of AI platform that supports MCP servers
 
 ## Installation Options
 
@@ -111,7 +117,29 @@ Choose one of the following installation methods:
 
 </details>
 
-## Configure Claude Desktop
+## Configure Your AI Platform
+
+Choose the configuration instructions for your AI platform:
+
+### Option 1: Claude Code
+
+Run the following command to add the MCP server to Claude Code:
+
+```bash
+claude mcp add snowflake-readonly \
+  --env SNOWFLAKE_ACCOUNT=your-account.region \
+  --env SNOWFLAKE_USERNAME=your-email@company.com \
+  --env SNOWFLAKE_WAREHOUSE=YOUR_WAREHOUSE \
+  -- /path/to/snowflake_mcp_server/snowflake_mcp_env/bin/python /path/to/snowflake_mcp_server/main.py
+```
+
+Replace the placeholders:
+- `/path/to/snowflake_mcp_server`: Absolute path to your cloned repository
+- `your-account.region`: Your Snowflake account (e.g., "xy12345.us-east-1")
+- `your-email@company.com`: Your Snowflake username
+- `YOUR_WAREHOUSE`: Your Snowflake warehouse name
+
+### Option 2: Claude Desktop (Pro)
 
 1. **Find your Claude Desktop configuration file**
    - macOS: `~/Library/Application\ Support/Claude/claude_desktop_config.json`
@@ -120,10 +148,8 @@ Choose one of the following installation methods:
 
 2. **Add the MCP server configuration**
 
-   Choose the configuration that matches your installation method:
-
    <details>
-   <summary><b>For Python venv installation</b> (Option 1 above)</summary>
+   <summary><b>For Python venv installation</b></summary>
    
    <br>
    
@@ -146,7 +172,7 @@ Choose one of the following installation methods:
    </details>
 
    <details>
-   <summary><b>For uv installation</b> (Option 2 above)</summary>
+   <summary><b>For uv installation</b></summary>
    
    <br>
    
@@ -166,12 +192,10 @@ Choose one of the following installation methods:
    }
    ```
    
-   **Note:** The `--directory` flag tells uv which project directory to use, ensuring it finds the correct virtual environment.
-   
    </details>
 
    <details>
-   <summary><b>For Conda installation</b> (Option 3 above)</summary>
+   <summary><b>For Conda installation</b></summary>
    
    <br>
    
@@ -191,21 +215,76 @@ Choose one of the following installation methods:
    }
    ```
    
-   **Note:** Find your conda environment path with `conda info --envs` after activating the environment.
-   
    </details>
 
-3. **Update the configuration values**
-   - `SNOWFLAKE_ACCOUNT`: Your Snowflake account identifier (e.g., "xy12345.us-east-1")
-   - `SNOWFLAKE_USERNAME`: Your Snowflake username (usually your email)
-   - `SNOWFLAKE_WAREHOUSE`: The warehouse to use for queries
+3. **Restart Claude Desktop** to load the new configuration
 
-4. **Restart Claude Desktop** to load the new configuration
+### Option 3: Gemini CLI
+
+1. **Edit your Gemini settings file**
+   - Location: `~/.gemini/settings.json`
+
+2. **Add the MCP server configuration**
+
+   ```json
+   {
+     "mcpServers": {
+       "snowflake-readonly": {
+         "command": "uv",
+         "args": ["--directory", "/path/to/snowflake_mcp_server", "run", "python", "main.py"],
+         "env": {
+           "SNOWFLAKE_ACCOUNT": "your-account.region",
+           "SNOWFLAKE_USERNAME": "your-email@company.com",
+           "SNOWFLAKE_WAREHOUSE": "YOUR_WAREHOUSE"
+         }
+       }
+     }
+   }
+   ```
+
+   Or if using Python venv:
+   ```json
+   {
+     "mcpServers": {
+       "snowflake-readonly": {
+         "command": "/path/to/snowflake_mcp_server/snowflake_mcp_env/bin/python",
+         "args": ["/path/to/snowflake_mcp_server/main.py"],
+         "env": {
+           "SNOWFLAKE_ACCOUNT": "your-account.region",
+           "SNOWFLAKE_USERNAME": "your-email@company.com",
+           "SNOWFLAKE_WAREHOUSE": "YOUR_WAREHOUSE"
+         }
+       }
+     }
+   }
+   ```
+
+### Option 4: Cursor CLI
+
+Add the MCP server to your Cursor configuration following the same JSON format as Claude Desktop above.
+
+### Option 5: Codex CLI with ChatGPT Pro
+
+Configure the MCP server in your Codex settings using the same JSON format as Claude Desktop above.
+
+### Option 6: Other MCP-Compatible Platforms
+
+Most MCP-compatible platforms use a similar JSON configuration format. Adapt the Claude Desktop configuration to your platform's specific requirements.
+
+### Configuration Values
+
+For all platforms, update these values:
+- `SNOWFLAKE_ACCOUNT`: Your Snowflake account identifier (e.g., "xy12345.us-east-1")
+- `SNOWFLAKE_USERNAME`: Your Snowflake username (usually your email)
+- `SNOWFLAKE_WAREHOUSE`: The warehouse to use for queries
+- `/path/to/snowflake_mcp_server`: Absolute path to your cloned repository
 
 ## Verify Setup
 
-1. Open Claude Desktop
-2. In a new conversation, you should see "snowflake-readonly" in the available MCP tools
+1. Open your AI platform (Claude Code, Claude Desktop, Gemini CLI, etc.)
+2. In a new conversation, verify the MCP server is available:
+   - For Claude platforms: You should see "snowflake-readonly" in the available MCP tools
+   - For Gemini/others: Check that the MCP server is listed in your tools
 3. Try running: "Can you refresh the Snowflake catalog?"
 4. The first time, your browser will open for SSO authentication
 5. After successful auth, the catalog should refresh
@@ -315,12 +394,16 @@ save_last_query_to_csv("~/Downloads/results.csv")
 - Check that your Snowflake account includes the region (e.g., "xy12345.us-east-1")
 - Verify your username matches your Snowflake login email
 
-### MCP Not Showing in Claude
+### MCP Not Showing in Your AI Platform
 - Check the config file is valid JSON (use a JSON validator)
-- Ensure Claude Desktop is fully closed and restarted
-- Check Claude Desktop logs for errors:
-  - macOS: `~/Library/Logs/Claude/`
-  - Windows: `%APPDATA%\Claude\logs\`
+- Ensure your AI platform is fully closed and restarted
+- Check logs for errors:
+  - Claude Desktop: 
+    - macOS: `~/Library/Logs/Claude/`
+    - Windows: `%APPDATA%\Claude\logs\`
+  - Claude Code: Check console output or use `claude mcp list` to verify
+  - Gemini CLI: Check `~/.gemini/logs/` or console output
+  - Other platforms: Consult platform-specific documentation
 
 ### Module Not Found Errors
 - Ensure the virtual environment is activated when installing dependencies
