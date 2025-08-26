@@ -66,6 +66,8 @@ Execute read-only SQL queries.
 Export the last query results to a CSV file.
 - Exports complete results from the last executed query
 - Includes column headers
+- Optionally exports the SQL query to a .sql file (enabled by default)
+- SQL file is formatted for readability with proper indentation
 - Results must be under 5GB cache limit
 
 ### 7. `get_query_history`
@@ -161,9 +163,14 @@ execute_query("SELECT * FROM SALES_DB.PUBLIC.CUSTOMERS WHERE revenue > 10000")
 execute_query("SELECT * FROM large_table LIMIT 1000")
 # Returns: All 1000 rows
 
-# Export to CSV
+# Export to CSV and SQL (default behavior)
 save_last_query_to_csv("~/Downloads/results.csv")
-# Creates CSV file with all query results
+# Creates: results.csv with all query results
+# Creates: results.sql with formatted SQL query
+
+# Export only CSV without SQL file
+save_last_query_to_csv("~/Downloads/results.csv", export_sql=false)
+# Creates only: results.csv with all query results
 ```
 
 ## Development Commands

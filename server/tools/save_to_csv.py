@@ -5,6 +5,7 @@ import logging
 import os
 from typing import Dict, Any, Optional
 from datetime import datetime
+import sqlparse
 
 from server.tools.query_executor import get_last_query_cache
 from server.constants import CSV_DELIMITER, CSV_NULL_VALUE, CSV_INCLUDE_HEADERS
@@ -13,8 +14,61 @@ from server.constants import CSV_DELIMITER, CSV_NULL_VALUE, CSV_INCLUDE_HEADERS
 logger = logging.getLogger(__name__)
 
 
+def _write_sql_file(sql: str, csv_path: str) -> Dict[str, Any]:
+    """
+    Write the SQL query to a .sql file alongside the CSV file.
+    
+    Args:
+        sql: The SQL query to write
+        csv_path: The path of the CSV file (used to derive SQL file path)
+        
+    Returns:
+        Dictionary with status of SQL file write operation
+    """
+    try:
+        # Derive SQL file path from CSV path
+        # Replace .csv extension with .sql, or append .sql if no .csv extension
+        if csv_path.lower().endswith('.csv'):
+            sql_path = csv_path[:-4] + '.sql'
+        else:
+            sql_path = csv_path + '.sql'
+        
+        # Format SQL for readability
+        formatted_sql = sqlparse.format(
+            sql,
+            reindent=True,
+            keyword_case='upper',
+            strip_comments=False,
+            use_space_around_operators=True,
+            indent_width=2
+        )
+        
+        # Ensure SQL ends with semicolon
+        if not formatted_sql.rstrip().endswith(';'):
+            formatted_sql = formatted_sql.rstrip() + ';'
+        
+        # Write SQL file
+        with open(sql_path, 'w', encoding='utf-8') as f:
+            f.write(formatted_sql)
+            f.write('\n')  # Add newline at end of file
+        
+        return {
+            "status": "success",
+            "sql_file_path": sql_path,
+            "message": f"SQL query exported to {sql_path}"
+        }
+        
+    except Exception as e:
+        logger.warning(f"Failed to write SQL file: {str(e)}")
+        return {
+            "status": "warning", 
+            "message": f"Failed to export SQL file: {str(e)}"
+        }
+
+
 async def save_last_query_to_csv(
-    file_path: str
+    file_path: str,
+    export_sql: bool = True
 ) -> Dict[str, Any]:
     """
     Save the last executed query results to a CSV file.
@@ -25,6 +79,7 @@ async def save_last_query_to_csv(
     
     Args:
         file_path: The absolute or relative path where the CSV file should be saved
+        export_sql: Whether to also export the SQL query to a .sql file (default: True)
         
     Returns:
         Dictionary with status and information about the export
@@ -117,6 +172,11 @@ async def save_last_query_to_csv(
             file_size = os.path.getsize(expanded_path)
             file_size_mb = file_size / (1024 * 1024)
             
+            # Export SQL file if requested
+            sql_export_result = None
+            if export_sql and cache.get("sql"):
+                sql_export_result = _write_sql_file(cache.get("sql"), expanded_path)
+            
             # Prepare response
             response = {
                 "status": "success",
@@ -134,7 +194,18 @@ async def save_last_query_to_csv(
                 }
             }
             
+            # Add SQL export info to response
+            if sql_export_result:
+                response["sql_export"] = sql_export_result
+                if sql_export_result.get("status") == "success":
+                    response["message"] += f" and SQL query to {sql_export_result.get('sql_file_path')}"
+                elif sql_export_result.get("status") == "warning":
+                    response["sql_export_warning"] = sql_export_result.get("message")
+            
             logger.info(f"Exported {row_count} rows to {expanded_path} ({file_size_mb:.2f}MB)")
+            if sql_export_result and sql_export_result.get("status") == "success":
+                logger.info(f"Exported SQL query to {sql_export_result.get('sql_file_path')}")
+            
             return response
             
         except PermissionError:

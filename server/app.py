@@ -374,9 +374,11 @@ async def get_query_history_tool(
     - Uses comma delimiter
     - Handles NULL values as empty strings
     - Formats datetime values in ISO format
+    - Optionally exports the SQL query to a .sql file (enabled by default)
     
     Parameters:
     - file_path: The absolute or relative path where the CSV file should be saved
+    - export_sql: Whether to also export the SQL query to a .sql file (default: true)
     
     Requirements:
     - A query must have been executed successfully using execute_query
@@ -385,14 +387,20 @@ async def get_query_history_tool(
     Examples:
     - save_last_query_to_csv("~/Downloads/customers.csv")
     - save_last_query_to_csv("/tmp/query_results.csv")
-    - save_last_query_to_csv("./data/export.csv")
+    - save_last_query_to_csv("./data/export.csv", export_sql=false)
+    
+    Notes:
+    - When export_sql is true, the SQL file will be saved with the same name as the CSV file
+      but with a .sql extension (e.g., customers.csv → customers.sql)
+    - The SQL file will be formatted for readability with proper indentation
     """
 )
 async def save_last_query_to_csv_tool(
-    file_path: str
+    file_path: str,
+    export_sql: bool = True
 ) -> Dict[str, Any]:
     """Save the last query results to a CSV file."""
-    return await save_to_csv.save_last_query_to_csv(file_path)
+    return await save_to_csv.save_last_query_to_csv(file_path, export_sql)
 
 
 def main():

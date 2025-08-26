@@ -115,8 +115,8 @@ async def refresh_catalog(
                 ORDER BY c.TABLE_CATALOG, c.TABLE_SCHEMA, c.TABLE_NAME, c.ORDINAL_POSITION
                 """
                 
-                logger.info(f"Executing query for {database} with max_rows=None")
-                result = connection.execute_query(query, max_rows=None)
+                logger.info(f"Executing query for {database}")
+                result = connection.execute_query(query)
                 
                 if result.data:
                     # Save checkpoint immediately after successful query
