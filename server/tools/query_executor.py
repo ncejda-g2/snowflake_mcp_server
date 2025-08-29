@@ -37,60 +37,6 @@ def _format_value(value: Any) -> Any:
         return value
 
 
-def _format_results(results: List[Dict], columns: List[Dict], max_column_width: int = 50) -> str:
-    """
-    Format query results as a readable table.
-    
-    Args:
-        results: Query results
-        columns: Column metadata
-        max_column_width: Maximum width for column display
-        
-    Returns:
-        Formatted table string
-    """
-    if not results:
-        return "No results returned"
-    
-    # Get column names
-    col_names = [col['name'] for col in columns]
-    
-    # Calculate column widths
-    col_widths = {}
-    for col in col_names:
-        # Start with column name length
-        col_widths[col] = len(col)
-        # Check data widths
-        for row in results[:100]:  # Sample first 100 rows for width calculation
-            value = str(row.get(col, ''))
-            col_widths[col] = min(max(col_widths[col], len(value)), max_column_width)
-    
-    # Build separator line
-    separator = '+'
-    for col in col_names:
-        separator += '-' * (col_widths[col] + 2) + '+'
-    
-    # Build header
-    lines = [separator]
-    header = '|'
-    for col in col_names:
-        header += f" {col[:col_widths[col]].ljust(col_widths[col])} |"
-    lines.append(header)
-    lines.append(separator)
-    
-    # Build data rows
-    for row in results:
-        line = '|'
-        for col in col_names:
-            value = str(row.get(col, ''))
-            if len(value) > col_widths[col]:
-                value = value[:col_widths[col]-3] + '...'
-            line += f" {value.ljust(col_widths[col])} |"
-        lines.append(line)
-    
-    lines.append(separator)
-    
-    return '\n'.join(lines)
 
 
 async def execute_query(
@@ -98,8 +44,7 @@ async def execute_query(
     cache: SchemaCache,
     sql: str,
     database: Optional[str] = None,
-    schema: Optional[str] = None,
-    format_results: bool = True
+    schema: Optional[str] = None
 ) -> Dict:
     """
     Execute a read-only SQL query with safety checks.
@@ -113,7 +58,6 @@ async def execute_query(
         sql: SQL query to execute
         database: Optional database context
         schema: Optional schema context
-        format_results: Whether to format results as a table
         
     Returns:
         Dictionary with query results and metadata
@@ -222,10 +166,6 @@ async def execute_query(
                 "query_id": result.query_id
             }
         }
-        
-        # Add formatted table if requested
-        if format_results:
-            response["formatted_table"] = _format_results(result.data, result.columns)
         
         return response
         

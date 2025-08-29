@@ -260,8 +260,7 @@ async def execute_query_tool(
         connection, cache,
         sql=sql,
         database=database,
-        schema=schema,
-        format_results=True
+        schema=schema
     )
 
 
