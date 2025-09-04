@@ -121,13 +121,16 @@ Choose one of the following installation methods:
 
 Choose the configuration instructions for your AI platform:
 
-### Option 1: Claude Code
+<details>
+<summary><b>Option 1: Claude Code</b></summary>
+
+<br>
 
 Run the following command to add the MCP server to Claude Code:
 
 ```bash
 claude mcp add snowflake-readonly \
-  --env SNOWFLAKE_ACCOUNT=your-account.region \
+  --env SNOWFLAKE_ACCOUNT=your-account \
   --env SNOWFLAKE_USERNAME=your-email@company.com \
   --env SNOWFLAKE_WAREHOUSE=YOUR_WAREHOUSE \
   -- /path/to/snowflake_mcp_server/snowflake_mcp_env/bin/python /path/to/snowflake_mcp_server/main.py
@@ -135,11 +138,16 @@ claude mcp add snowflake-readonly \
 
 Replace the placeholders:
 - `/path/to/snowflake_mcp_server`: Absolute path to your cloned repository
-- `your-account.region`: Your Snowflake account (e.g., "xy12345.us-east-1")
+- `your-account`: Your Snowflake account identifier (see Configuration Values section)
 - `your-email@company.com`: Your Snowflake username
 - `YOUR_WAREHOUSE`: Your Snowflake warehouse name
 
-### Option 2: Claude Desktop (Pro)
+</details>
+
+<details>
+<summary><b>Option 2: Claude Desktop (Pro)</b></summary>
+
+<br>
 
 1. **Find your Claude Desktop configuration file**
    - macOS: `~/Library/Application\ Support/Claude/claude_desktop_config.json`
@@ -160,7 +168,7 @@ Replace the placeholders:
          "command": "/path/to/snowflake_mcp_server/snowflake_mcp_env/bin/python",
          "args": ["/path/to/snowflake_mcp_server/main.py"],
          "env": {
-           "SNOWFLAKE_ACCOUNT": "your-account.region",
+           "SNOWFLAKE_ACCOUNT": "your-account",
            "SNOWFLAKE_USERNAME": "your-email@company.com",
            "SNOWFLAKE_WAREHOUSE": "YOUR_WAREHOUSE"
          }
@@ -183,7 +191,7 @@ Replace the placeholders:
          "command": "uv",
          "args": ["--directory", "/path/to/snowflake_mcp_server", "run", "python", "main.py"],
          "env": {
-           "SNOWFLAKE_ACCOUNT": "your-account.region",
+           "SNOWFLAKE_ACCOUNT": "your-account",
            "SNOWFLAKE_USERNAME": "your-email@company.com",
            "SNOWFLAKE_WAREHOUSE": "YOUR_WAREHOUSE"
          }
@@ -206,7 +214,7 @@ Replace the placeholders:
          "command": "/path/to/conda/envs/snowflake-mcp/bin/python",
          "args": ["/path/to/snowflake_mcp_server/main.py"],
          "env": {
-           "SNOWFLAKE_ACCOUNT": "your-account.region",
+           "SNOWFLAKE_ACCOUNT": "your-account",
            "SNOWFLAKE_USERNAME": "your-email@company.com",
            "SNOWFLAKE_WAREHOUSE": "YOUR_WAREHOUSE"
          }
@@ -219,7 +227,12 @@ Replace the placeholders:
 
 3. **Restart Claude Desktop** to load the new configuration
 
-### Option 3: Gemini CLI
+</details>
+
+<details>
+<summary><b>Option 3: Gemini CLI</b></summary>
+
+<br>
 
 1. **Edit your Gemini settings file**
    - Location: `~/.gemini/settings.json`
@@ -233,7 +246,7 @@ Replace the placeholders:
          "command": "uv",
          "args": ["--directory", "/path/to/snowflake_mcp_server", "run", "python", "main.py"],
          "env": {
-           "SNOWFLAKE_ACCOUNT": "your-account.region",
+           "SNOWFLAKE_ACCOUNT": "your-account",
            "SNOWFLAKE_USERNAME": "your-email@company.com",
            "SNOWFLAKE_WAREHOUSE": "YOUR_WAREHOUSE"
          }
@@ -250,7 +263,7 @@ Replace the placeholders:
          "command": "/path/to/snowflake_mcp_server/snowflake_mcp_env/bin/python",
          "args": ["/path/to/snowflake_mcp_server/main.py"],
          "env": {
-           "SNOWFLAKE_ACCOUNT": "your-account.region",
+           "SNOWFLAKE_ACCOUNT": "your-account",
            "SNOWFLAKE_USERNAME": "your-email@company.com",
            "SNOWFLAKE_WAREHOUSE": "YOUR_WAREHOUSE"
          }
@@ -259,25 +272,49 @@ Replace the placeholders:
    }
    ```
 
-### Option 4: Cursor CLI
+</details>
+
+<details>
+<summary><b>Option 4: Cursor CLI</b></summary>
+
+<br>
 
 Add the MCP server to your Cursor configuration following the same JSON format as Claude Desktop above.
 
-### Option 5: Codex CLI with ChatGPT Pro
+</details>
+
+<details>
+<summary><b>Option 5: Codex CLI with ChatGPT Pro</b></summary>
+
+<br>
 
 Configure the MCP server in your Codex settings using the same JSON format as Claude Desktop above.
 
-### Option 6: Other MCP-Compatible Platforms
+</details>
+
+<details>
+<summary><b>Option 6: Other MCP-Compatible Platforms</b></summary>
+
+<br>
 
 Most MCP-compatible platforms use a similar JSON configuration format. Adapt the Claude Desktop configuration to your platform's specific requirements.
+
+</details>
 
 ### Configuration Values
 
 For all platforms, update these values:
-- `SNOWFLAKE_ACCOUNT`: Your Snowflake account identifier (e.g., "xy12345.us-east-1")
-- `SNOWFLAKE_USERNAME`: Your Snowflake username (usually your email)
-- `SNOWFLAKE_WAREHOUSE`: The warehouse to use for queries
-- `/path/to/snowflake_mcp_server`: Absolute path to your cloned repository
+
+- **`SNOWFLAKE_ACCOUNT`**: Your Snowflake account identifier. This can be:
+  - **Account Identifier format**: `GJA24605-DATAWAREHOUSE` (organization-account format)
+  - **Account Locator with Region**: `FNA20204.us-east-1` (legacy format)
+  - Find yours at: Snowflake UI → bottom-left corner → hover over account name
+  
+- **`SNOWFLAKE_USERNAME`**: Your Snowflake username (usually your email)
+
+- **`SNOWFLAKE_WAREHOUSE`**: The warehouse to use for queries (e.g., `ML_DEV_WH`)
+
+- **`/path/to/snowflake_mcp_server`**: Absolute path to your cloned repository
 
 ## Verify Setup
 
@@ -391,7 +428,9 @@ save_last_query_to_csv("~/Downloads/results.csv")
 
 ### Authentication Issues
 - Ensure your default browser can open for SSO
-- Check that your Snowflake account includes the region (e.g., "xy12345.us-east-1")
+- Check your Snowflake account format:
+  - Account Identifier: `GJA24605-DATAWAREHOUSE` (preferred)
+  - Account Locator: `FNA20204.us-east-1` (legacy, requires region)
 - Verify your username matches your Snowflake login email
 
 ### MCP Not Showing in Your AI Platform
