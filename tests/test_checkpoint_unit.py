@@ -90,12 +90,12 @@ def test_checkpoint_functionality():
 
     loaded_results, processed_databases = cache.load_checkpoints()
 
-    assert (
-        len(loaded_results) == 3
-    ), f"Should load 3 total results, got {len(loaded_results)}"
-    assert (
-        len(processed_databases) == 2
-    ), f"Should have 2 databases, got {len(processed_databases)}"
+    assert len(loaded_results) == 3, (
+        f"Should load 3 total results, got {len(loaded_results)}"
+    )
+    assert len(processed_databases) == 2, (
+        f"Should have 2 databases, got {len(processed_databases)}"
+    )
     print(
         f"✓ Loaded {len(loaded_results)} results from {len(processed_databases)} databases"
     )
@@ -111,9 +111,9 @@ def test_checkpoint_functionality():
 
     loaded_errors = cache.load_error_log()
     assert len(loaded_errors) == 2, f"Should load 2 errors, got {len(loaded_errors)}"
-    assert (
-        loaded_errors["FAILED_DB"] == "Connection timeout"
-    ), "Error message should match"
+    assert loaded_errors["FAILED_DB"] == "Connection timeout", (
+        "Error message should match"
+    )
     print(f"✓ Loaded {len(loaded_errors)} errors")
 
     # Test 5: Update from information schema (with checkpoint data)
@@ -124,9 +124,9 @@ def test_checkpoint_functionality():
     table_count = cache.update_from_information_schema(loaded_results)
 
     assert table_count == 2, f"Should have 2 tables, got {table_count}"
-    assert (
-        len(cache.databases) == 2
-    ), f"Should have 2 databases, got {len(cache.databases)}"
+    assert len(cache.databases) == 2, (
+        f"Should have 2 databases, got {len(cache.databases)}"
+    )
     print(f"✓ Processed {table_count} tables from {len(cache.databases)} databases")
 
     # Test 6: Clear checkpoints
@@ -135,9 +135,9 @@ def test_checkpoint_functionality():
     cache.clear_checkpoints()
 
     checkpoint_files = list(cache.checkpoint_dir.glob("checkpoint_*.json"))
-    assert (
-        len(checkpoint_files) == 0
-    ), f"Should have 0 checkpoint files, got {len(checkpoint_files)}"
+    assert len(checkpoint_files) == 0, (
+        f"Should have 0 checkpoint files, got {len(checkpoint_files)}"
+    )
     print("✓ All checkpoints cleared")
 
     # Test 7: Clear error log
