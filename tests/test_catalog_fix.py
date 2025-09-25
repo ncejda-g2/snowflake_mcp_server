@@ -29,7 +29,7 @@ logging.basicConfig(
 
 @pytest.mark.skipif(
     os.getenv("CI") == "true",
-    reason="Requires Snowflake connection with SSO authentication"
+    reason="Requires Snowflake connection with SSO authentication",
 )
 async def test_catalog_refresh():
     """Test the catalog refresh with our fix."""

@@ -20,7 +20,7 @@ load_dotenv()
 
 @pytest.mark.skipif(
     os.getenv("CI") == "true",
-    reason="Requires Snowflake connection with SSO authentication"
+    reason="Requires Snowflake connection with SSO authentication",
 )
 async def test_checkpointing():
     """Test the checkpoint and resume functionality."""

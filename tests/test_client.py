@@ -12,7 +12,7 @@ from mcp.client.stdio import stdio_client
 
 @pytest.mark.skipif(
     os.getenv("CI") == "true",
-    reason="Requires environment variables for Snowflake connection"
+    reason="Requires environment variables for Snowflake connection",
 )
 async def test_mcp_server():
     """Test the MCP server with basic operations"""
