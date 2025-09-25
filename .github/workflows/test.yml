@@ -70,7 +70,6 @@ jobs:
         if: matrix.python-version == '3.12'
         with:
           GITHUB_TOKEN: ${{ github.token }}
-          COVERAGE_PATH: coverage.xml
 
       - name: Surface failing tests
         if: always()
