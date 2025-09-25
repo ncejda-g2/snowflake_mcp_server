@@ -1,23 +1,20 @@
 """Query execution tool for running read-only SQL queries."""
 
-import hashlib
 import json
 import logging
 import re
 import sys
-from typing import Dict, List, Optional, Any, Tuple
 from datetime import datetime
+from typing import Any
 
-from server.schema_cache import SchemaCache
-from server.snowflake_connection import SnowflakeConnection, QueryResult
-from server.tools.catalog_refresh import refresh_catalog
 from server.constants import MAX_CACHE_SIZE_BYTES, MCP_CHAR_WARNING_THRESHOLD
-
+from server.schema_cache import SchemaCache
+from server.snowflake_connection import SnowflakeConnection, QueryValidator
 
 logger = logging.getLogger(__name__)
 
 # In-memory cache for the last query results (for CSV export)
-last_query_cache: Optional[Dict[str, Any]] = None
+last_query_cache: dict[str, Any] | None = None
 
 
 def _estimate_size(obj: Any) -> int:
@@ -43,9 +40,9 @@ async def execute_query(
     connection: SnowflakeConnection,
     cache: SchemaCache,
     sql: str,
-    database: Optional[str] = None,
-    schema: Optional[str] = None
-) -> Dict:
+    database: str | None = None,
+    schema: str | None = None
+) -> dict:
     """
     Execute a read-only SQL query with safety checks.
     
@@ -72,7 +69,7 @@ async def execute_query(
             "message": error_msg,
             "query_type": str(query_type)
         }
-    
+
     # Then validate cache is populated (required before queries)
     if cache.is_empty():
         return {
@@ -80,10 +77,10 @@ async def execute_query(
             "message": "Schema cache is empty. Please run refresh_catalog first.",
             "action_required": "refresh_catalog"
         }
-    
+
     if cache.is_expired():
         logger.warning("Schema cache is expired, consider refreshing")
-    
+
     try:
         # Execute query
         result = connection.execute_query(
@@ -91,12 +88,12 @@ async def execute_query(
             database=database,
             schema=schema
         )
-        
+
         if not result.data:
             # No results, but still clear the cache for consistency
             global last_query_cache
             last_query_cache = None
-            
+
             return {
                 "status": "success",
                 "data": [],
@@ -104,7 +101,7 @@ async def execute_query(
                 "message": "Query executed successfully but returned no results",
                 "execution_time": result.execution_time
             }
-        
+
         # Check if results exceed cache size limit for CSV export
         cache_data = {
             "all_results": result.data,
@@ -116,10 +113,10 @@ async def execute_query(
             "execution_time": result.execution_time,
             "query_id": result.query_id
         }
-        
+
         estimated_size = _estimate_size(cache_data)
         cache_exceeded = estimated_size > MAX_CACHE_SIZE_BYTES
-        
+
         # Update last_query_cache for CSV export
         if cache_exceeded:
             # Store metadata only in last_query_cache with warning
@@ -145,7 +142,7 @@ async def execute_query(
             logger.debug(f"Cached query results for CSV export: {estimated_size / (1024**2):.2f}MB")
             csv_available = True
             csv_message = "Results cached and ready for CSV export using save_last_query_to_csv"
-        
+
         # Format results for JSON
         formatted_data = []
         for row in result.data:
@@ -190,7 +187,7 @@ async def execute_query(
             response["token_limit_warning"] = token_warning
 
         return response
-        
+
     except ValueError as e:
         # Query validation errors
         return {
@@ -213,9 +210,9 @@ async def validate_query_without_execution(
     connection: SnowflakeConnection,
     cache: SchemaCache,
     sql: str,
-    database: Optional[str] = None,
-    schema: Optional[str] = None
-) -> Dict:
+    database: str | None = None,
+    schema: str | None = None
+) -> dict:
     """
     Generate and prepare a SQL query without executing it.
     
@@ -240,7 +237,7 @@ async def validate_query_without_execution(
     from server.snowflake_connection import QueryValidator
     validator = QueryValidator()
     is_valid, error_msg, query_type = validator.validate(sql)
-    
+
     # For this tool, we allow all query types but note whether it's read-only
     validation_result = {
         "is_read_only": is_valid,
@@ -248,31 +245,31 @@ async def validate_query_without_execution(
         "execution_allowed": is_valid,  # Only read-only queries can be executed via execute_query
         "message": "Query generated successfully. Write queries cannot be executed through the MCP server." if not is_valid else "Query is read-only and can be executed via execute_query"
     }
-    
+
     # Check if cache is populated (recommended but not required for validation)
     cache_status = {
         "is_populated": not cache.is_empty(),
         "is_expired": cache.is_expired() if not cache.is_empty() else None
     }
-    
+
     if cache.is_empty():
         cache_status["warning"] = "Schema cache is empty. Consider running refresh_catalog for better validation."
-    
+
     # Prepare the final query with context if provided
     final_query = sql.strip()
     if final_query.endswith(';'):
         final_query = final_query[:-1]
-    
+
     # Add database/schema context comment if provided
     context_info = []
     if database:
         context_info.append(f"Database: {database}")
     if schema:
         context_info.append(f"Schema: {schema}")
-    
+
     if context_info:
         final_query = f"-- Context: {', '.join(context_info)}\n{final_query}"
-    
+
     # Try to extract table references from the query (basic parsing)
     table_references = []
     try:
@@ -286,7 +283,7 @@ async def validate_query_without_execution(
                 table_references.append(table_ref)
     except Exception:
         pass  # Ignore parsing errors
-    
+
     # Build response
     response = {
         "status": "success",
@@ -301,28 +298,28 @@ async def validate_query_without_execution(
             "estimated_complexity": "simple" if len(table_references) <= 1 else "moderate" if len(table_references) <= 3 else "complex"
         }
     }
-    
+
     # Add syntax hints if query might need adjustment
     hints = []
     if database and schema and not any(x in sql.upper() for x in [f"{database.upper()}.{schema.upper()}", "USE DATABASE", "USE SCHEMA"]):
         hints.append(f"Consider using fully qualified table names: {database}.{schema}.table_name")
-    
+
     if "LIMIT" not in sql.upper() and str(query_type) == "QueryType.SELECT":
         hints.append("Consider adding a LIMIT clause to control result size")
-    
+
     if hints:
         response["hints"] = hints
-    
+
     # Add appropriate note about execution based on query type
     if is_valid:
         response["note"] = "This read-only query has been generated and can be executed using execute_query."
     else:
         response["note"] = "This write query has been generated but CANNOT be executed through the MCP server. Please review and execute it directly in Snowflake after manual verification."
-    
+
     return response
 
 
-def get_last_query_cache() -> Optional[Dict[str, Any]]:
+def get_last_query_cache() -> dict[str, Any] | None:
     """
     Get the cached results from the last executed query.
     
@@ -336,7 +333,7 @@ async def get_query_history(
     connection: SnowflakeConnection,
     limit: int = 10,
     only_successful: bool = True
-) -> Dict:
+) -> dict:
     """
     Get the history of executed queries.
     
@@ -350,14 +347,14 @@ async def get_query_history(
     """
     try:
         history = connection.get_query_history(limit=limit, only_successful=only_successful)
-        
+
         if not history:
             return {
                 "status": "success",
                 "message": "No query history available",
                 "history": []
             }
-        
+
         # Format history for response
         formatted_history = []
         for entry in history:
@@ -372,7 +369,7 @@ async def get_query_history(
                 "error": entry.get('error')
             }
             formatted_history.append(formatted_entry)
-        
+
         return {
             "status": "success",
             "history": formatted_history,
@@ -380,7 +377,7 @@ async def get_query_history(
             "limit": limit,
             "filter": "successful_only" if only_successful else "all"
         }
-        
+
     except Exception as e:
         logger.error(f"Failed to get query history: {str(e)}")
         return {

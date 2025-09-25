@@ -1,19 +1,19 @@
 """Snowflake connection management with strict read-only enforcement."""
 
 import logging
-import os
 import re
 import time
+from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, Generator, List, Optional, Tuple
 
 import snowflake.connector
-from server.config import Config
 from snowflake.connector import DictCursor
 from snowflake.connector.connection import SnowflakeConnection as SnowflakeConn
-from snowflake.connector.errors import DatabaseError, ProgrammingError
+from snowflake.connector.errors import ProgrammingError
+
+from server.config import Config
 
 
 class QueryType(Enum):
@@ -32,11 +32,11 @@ class QueryType(Enum):
 class QueryResult:
     """Structured query result."""
 
-    data: Optional[List[Dict]]
-    columns: List[Dict]
+    data: list[dict] | None
+    columns: list[dict]
     row_count: int
     execution_time: float
-    query_id: Optional[str] = None
+    query_id: str | None = None
     has_more_rows: bool = False
 
 
@@ -74,7 +74,7 @@ class QueryValidator:
     READ_OPERATIONS = {"SELECT", "SHOW", "DESCRIBE", "DESC", "EXPLAIN", "LIST", "WITH"}
 
     @classmethod
-    def validate(cls, sql: str) -> Tuple[bool, str, QueryType]:
+    def validate(cls, sql: str) -> tuple[bool, str, QueryType]:
         """
         Validate that SQL query is read-only.
 
@@ -190,11 +190,11 @@ class SnowflakeConnection:
     def __init__(self, config: Config):
         """Initialize connection manager with configuration."""
         self.config = config
-        self.connection: Optional[SnowflakeConn] = None
+        self.connection: SnowflakeConn | None = None
         self.logger = logging.getLogger(__name__)
-        self.query_log: List[Dict] = []
+        self.query_log: list[dict] = []
         self.validator = QueryValidator()
-        self._connection_metadata: Dict = {}
+        self._connection_metadata: dict = {}
 
     def connect(self) -> None:
         """
@@ -288,8 +288,8 @@ class SnowflakeConnection:
     def execute_query(
         self,
         sql: str,
-        database: Optional[str] = None,
-        schema: Optional[str] = None,
+        database: str | None = None,
+        schema: str | None = None,
     ) -> QueryResult:
         """
         Execute a read-only SQL query.
@@ -426,10 +426,10 @@ class SnowflakeConnection:
     def execute_query_stream(
         self,
         sql: str,
-        database: Optional[str] = None,
-        schema: Optional[str] = None,
+        database: str | None = None,
+        schema: str | None = None,
         batch_size: int = 1000,
-    ) -> Generator[List[Dict], None, None]:
+    ) -> Generator[list[dict], None, None]:
         """
         Execute a query and stream results in batches.
 
@@ -460,14 +460,14 @@ class SnowflakeConnection:
                     break
                 yield batch
 
-    def get_databases(self) -> List[str]:
+    def get_databases(self) -> list[str]:
         """Get list of accessible databases."""
         result = self.execute_query("SHOW DATABASES")
         if result.data:
             return [row["name"] for row in result.data]
         return []
 
-    def get_schemas(self, database: str) -> List[str]:
+    def get_schemas(self, database: str) -> list[str]:
         """Get list of schemas in a database."""
         # Validate database name to prevent injection
         if not re.match(r"^[a-zA-Z0-9_]+$", database):
@@ -478,7 +478,7 @@ class SnowflakeConnection:
             return [row["name"] for row in result.data]
         return []
 
-    def get_tables(self, database: str, schema: str) -> List[Dict]:
+    def get_tables(self, database: str, schema: str) -> list[dict]:
         """Get detailed table information."""
         # Validate names to prevent injection
         if not re.match(r"^[a-zA-Z0-9_]+$", database):
@@ -500,7 +500,7 @@ class SnowflakeConnection:
             ]
         return []
 
-    def get_table_columns(self, database: str, schema: str, table: str) -> List[Dict]:
+    def get_table_columns(self, database: str, schema: str, table: str) -> list[dict]:
         """Get column information for a table."""
         # Validate names
         if not re.match(r"^[a-zA-Z0-9_]+$", database):
@@ -553,7 +553,7 @@ class SnowflakeConnection:
 
     def get_query_history(
         self, limit: int = 100, only_successful: bool = False
-    ) -> List[Dict]:
+    ) -> list[dict]:
         """Get query execution history."""
         history = self.query_log.copy()
 

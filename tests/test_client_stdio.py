@@ -4,23 +4,25 @@
 import asyncio
 import json
 import os
+
 from dotenv import load_dotenv
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
+
 async def test_mcp_server():
     """Test the MCP server with basic operations"""
-    
+
     # Load environment variables from .env file
     load_dotenv()
-    
+
     # Set up environment variables needed by the server
     env = os.environ.copy()
-    
+
     # Check if environment variables are already set
     required_vars = ["SNOWFLAKE_ACCOUNT", "SNOWFLAKE_USERNAME", "SNOWFLAKE_WAREHOUSE"]
     missing = [var for var in required_vars if not os.getenv(var)]
-    
+
     if missing:
         print("❌ Missing required environment variables:")
         for var in missing:
@@ -30,17 +32,17 @@ async def test_mcp_server():
         print("SNOWFLAKE_USERNAME=your-username")
         print("SNOWFLAKE_WAREHOUSE=your-warehouse")
         return
-    
+
     # Create server parameters to spawn a new instance for testing
     server_params = StdioServerParameters(
         command="python",
         args=["main.py"],
         env=env
     )
-    
+
     print("🚀 Starting test client for Snowflake MCP Server...")
     print("=" * 60)
-    
+
     try:
         async with stdio_client(server_params) as (read, write):
             async with ClientSession(read, write) as session:
@@ -48,7 +50,7 @@ async def test_mcp_server():
                 print("📡 Initializing connection...")
                 await session.initialize()
                 print("✅ Connected successfully!")
-                
+
                 # List available tools
                 print("\n📋 Available tools:")
                 print("-" * 40)
@@ -57,7 +59,7 @@ async def test_mcp_server():
                     print(f"  • {tool.name}")
                     if tool.description:
                         print(f"    {tool.description[:80]}...")
-                
+
                 # Test 1: Refresh catalog
                 print("\n🔄 Test 1: Refreshing catalog...")
                 print("-" * 40)
@@ -70,7 +72,7 @@ async def test_mcp_server():
                     print(f"✅ Success: {content[:200]}...")
                 except Exception as e:
                     print(f"❌ Failed: {e}")
-                
+
                 # Test 2: Inspect schemas
                 print("\n🔍 Test 2: Inspecting schemas...")
                 print("-" * 40)
@@ -95,7 +97,7 @@ async def test_mcp_server():
                         print(f"✅ Result: {content[:200]}...")
                 except Exception as e:
                     print(f"❌ Failed: {e}")
-                
+
                 # Test 3: Search tables
                 print("\n🔎 Test 3: Searching for 'customer' tables...")
                 print("-" * 40)
@@ -120,7 +122,7 @@ async def test_mcp_server():
                         print(f"✅ Result: {content[:200]}...")
                 except Exception as e:
                     print(f"❌ Failed: {e}")
-                
+
                 # Test 4: Execute a simple query
                 print("\n📊 Test 4: Executing 'SHOW DATABASES' query...")
                 print("-" * 40)
@@ -145,7 +147,7 @@ async def test_mcp_server():
                         print(f"✅ Result: {content[:200]}...")
                 except Exception as e:
                     print(f"❌ Failed: {e}")
-                
+
                 # Test 5: Try a write operation (should fail)
                 print("\n🚫 Test 5: Testing write protection (should fail)...")
                 print("-" * 40)
@@ -161,16 +163,16 @@ async def test_mcp_server():
                         if data.get("status") == "error":
                             print(f"✅ Correctly blocked: {data.get('message', 'Unknown error')[:100]}...")
                         else:
-                            print(f"❌ Unexpected success! This should have been blocked")
+                            print("❌ Unexpected success! This should have been blocked")
                             print(f"   Result: {content}")
                     except:
                         print(f"❌ Unexpected result format: {content}")
                 except Exception as e:
                     print(f"✅ Correctly blocked (exception): {str(e)[:100]}...")
-                
+
                 print("\n" + "=" * 60)
                 print("✨ All tests completed!")
-                
+
     except Exception as e:
         print(f"\n❌ Error during testing: {e}")
         import traceback

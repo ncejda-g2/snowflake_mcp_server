@@ -1,7 +1,6 @@
 """Schema inspection tool for exploring Snowflake database structures."""
 
 import logging
-from typing import Dict, List, Optional
 
 from server.schema_cache import SchemaCache
 from server.snowflake_connection import SnowflakeConnection
@@ -13,10 +12,10 @@ logger = logging.getLogger(__name__)
 async def inspect_schemas(
     connection: SnowflakeConnection,
     cache: SchemaCache,
-    database_pattern: Optional[str] = None,
-    schema_pattern: Optional[str] = None,
-    table_pattern: Optional[str] = None,
-) -> Dict:
+    database_pattern: str | None = None,
+    schema_pattern: str | None = None,
+    table_pattern: str | None = None,
+) -> dict:
     """
     List available databases, schemas, and tables from cache.
 
@@ -93,13 +92,13 @@ async def inspect_schemas(
                             "columns": len(table.columns)
                         }
                         total_columns += len(table.columns)
-                        
+
                         # Only include comment if it exists
                         if table.comment:
                             table_info["comment"] = table.comment
-                        
+
                         schema_tables.append(table_info)
-                    
+
                     total_tables += 1
 
                 if schema_tables:
@@ -142,7 +141,7 @@ async def inspect_schemas(
                 "data": hierarchy,
                 "total_tables": total_tables
             }
-        
+
         # Full response when not filtering
         summary = {
             "databases": len(hierarchy),
@@ -169,7 +168,7 @@ async def inspect_schemas(
 
 async def search_tables(
     connection: SnowflakeConnection, cache: SchemaCache, search_term: str
-) -> Dict:
+) -> dict:
     """
     Search for tables across all databases.
 

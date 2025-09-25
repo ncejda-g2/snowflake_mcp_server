@@ -2,20 +2,20 @@
 """Snowflake MCP Server - Main application."""
 
 import logging
-from typing import Dict, Optional, Any
+from typing import Any
 
 from fastmcp import FastMCP
 
 from server.config import Config
-from server.snowflake_connection import SnowflakeConnection
 from server.schema_cache import SchemaCache
+from server.snowflake_connection import SnowflakeConnection
 from server.tools import (
     catalog_refresh,
-    schema_inspector,
-    table_inspector,
+    execute_big_query_to_disk,
     query_executor,
     save_to_csv,
-    execute_big_query_to_disk
+    schema_inspector,
+    table_inspector,
 )
 
 # Initialize configuration and logging
@@ -30,29 +30,29 @@ logger = logging.getLogger(__name__)
 mcp = FastMCP("Snowflake Read-Only MCP")
 
 # Global instances (initialized on startup)
-connection: Optional[SnowflakeConnection] = None
-cache: Optional[SchemaCache] = None
+connection: SnowflakeConnection | None = None
+cache: SchemaCache | None = None
 
 
 # Initialize resources on first use
 def initialize_resources():
     """Initialize connection and cache if not already done."""
     global connection, cache
-    
+
     if connection is None:
         logger.info("Initializing Snowflake connection...")
         connection = SnowflakeConnection(config)
         connection.connect()
         logger.info("Snowflake connection established")
-        
+
         # Test connection
         if not connection.test_connection():
             raise RuntimeError("Connection test failed")
-    
+
     if cache is None:
         logger.info(f"Initializing schema cache (TTL: {config.cache_ttl_days} days)")
         cache = SchemaCache(ttl_days=config.cache_ttl_days)
-        
+
         # Log cache status
         if cache.is_expired() or cache.is_empty():
             logger.info("Cache is expired or empty - run refresh_catalog to populate")
@@ -79,7 +79,7 @@ def initialize_resources():
     - resume: Resume from checkpoints if they exist (default: true)
     """
 )
-async def refresh_catalog_tool(force: bool = False, resume: bool = True) -> Dict[str, Any]:
+async def refresh_catalog_tool(force: bool = False, resume: bool = True) -> dict[str, Any]:
     """Refresh the schema catalog cache."""
     try:
         initialize_resources()
@@ -88,7 +88,7 @@ async def refresh_catalog_tool(force: bool = False, resume: bool = True) -> Dict
             "status": "error",
             "message": f"Failed to initialize: {str(e)}"
         }
-    
+
     assert connection is not None and cache is not None
     return await catalog_refresh.refresh_catalog(connection, cache, force=force, resume=resume)
 
@@ -116,10 +116,10 @@ async def refresh_catalog_tool(force: bool = False, resume: bool = True) -> Dict
     """
 )
 async def inspect_schemas_tool(
-    database_pattern: Optional[str] = None,
-    schema_pattern: Optional[str] = None,
-    table_pattern: Optional[str] = None
-) -> Dict[str, Any]:
+    database_pattern: str | None = None,
+    schema_pattern: str | None = None,
+    table_pattern: str | None = None
+) -> dict[str, Any]:
     """List databases, schemas, and tables with optional filtering."""
     try:
         initialize_resources()
@@ -128,7 +128,7 @@ async def inspect_schemas_tool(
             "status": "error",
             "message": f"Failed to initialize: {str(e)}"
         }
-    
+
     assert connection is not None and cache is not None
     return await schema_inspector.inspect_schemas(
         connection, cache,
@@ -154,7 +154,7 @@ async def inspect_schemas_tool(
     - search_tables("revenue") - Find revenue tables
     """
 )
-async def search_tables_tool(search_term: str) -> Dict[str, Any]:
+async def search_tables_tool(search_term: str) -> dict[str, Any]:
     """Search for tables by name or comment."""
     try:
         initialize_resources()
@@ -163,7 +163,7 @@ async def search_tables_tool(search_term: str) -> Dict[str, Any]:
             "status": "error",
             "message": f"Failed to initialize: {str(e)}"
         }
-    
+
     assert connection is not None and cache is not None
     return await schema_inspector.search_tables(connection, cache, search_term)
 
@@ -194,7 +194,7 @@ async def get_table_schema_tool(
     table: str,
     include_sample: bool = False,
     sample_rows: int = 5
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Get detailed table schema information."""
     try:
         initialize_resources()
@@ -203,7 +203,7 @@ async def get_table_schema_tool(
             "status": "error",
             "message": f"Failed to initialize: {str(e)}"
         }
-    
+
     assert connection is not None and cache is not None
     return await table_inspector.get_table_schema(
         connection, cache,
@@ -249,9 +249,9 @@ async def get_table_schema_tool(
 )
 async def execute_query_tool(
     sql: str,
-    database: Optional[str] = None,
-    schema: Optional[str] = None
-) -> Dict[str, Any]:
+    database: str | None = None,
+    schema: str | None = None
+) -> dict[str, Any]:
     """Execute a read-only SQL query."""
     try:
         initialize_resources()
@@ -260,7 +260,7 @@ async def execute_query_tool(
             "status": "error",
             "message": f"Failed to initialize: {str(e)}"
         }
-    
+
     assert connection is not None and cache is not None
     return await query_executor.execute_query(
         connection, cache,
@@ -305,9 +305,9 @@ async def execute_query_tool(
 )
 async def validate_query_without_execution_tool(
     sql: str,
-    database: Optional[str] = None,
-    schema: Optional[str] = None
-) -> Dict[str, Any]:
+    database: str | None = None,
+    schema: str | None = None
+) -> dict[str, Any]:
     """Generate and prepare a SQL query (read or write) without executing it."""
     try:
         initialize_resources()
@@ -316,7 +316,7 @@ async def validate_query_without_execution_tool(
             "status": "error",
             "message": f"Failed to initialize: {str(e)}"
         }
-    
+
     assert connection is not None and cache is not None
     return await query_executor.validate_query_without_execution(
         connection, cache,
@@ -346,7 +346,7 @@ async def validate_query_without_execution_tool(
 async def get_query_history_tool(
     limit: int = 10,
     only_successful: bool = True
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Get query execution history."""
     try:
         initialize_resources()
@@ -355,7 +355,7 @@ async def get_query_history_tool(
             "status": "error",
             "message": f"Failed to initialize: {str(e)}"
         }
-    
+
     assert connection is not None
     return await query_executor.get_query_history(
         connection,
@@ -403,7 +403,7 @@ async def get_query_history_tool(
 async def save_last_query_to_csv_tool(
     file_path: str,
     export_sql: bool = True
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Save the last query results to a CSV file."""
     return await save_to_csv.save_last_query_to_csv(file_path, export_sql)
 
@@ -449,10 +449,10 @@ async def save_last_query_to_csv_tool(
 async def execute_big_query_to_disk_tool(
     sql: str,
     file_path: str,
-    database: Optional[str] = None,
-    schema: Optional[str] = None,
+    database: str | None = None,
+    schema: str | None = None,
     timeout_seconds: int = 300
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Execute a large query and stream results to disk."""
     try:
         initialize_resources()

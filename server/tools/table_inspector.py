@@ -1,12 +1,9 @@
 """Table inspection tool for detailed table and column information."""
 
 import logging
-from typing import Dict, List, Optional
 
-from server.schema_cache import SchemaCache, TableInfo
+from server.schema_cache import SchemaCache
 from server.snowflake_connection import SnowflakeConnection
-from server.tools.catalog_refresh import refresh_catalog
-
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +16,7 @@ async def get_table_schema(
     table: str,
     include_sample: bool = False,
     sample_rows: int = 5
-) -> Dict:
+) -> dict:
     """
     Get detailed column information for a specific table.
     
@@ -41,14 +38,14 @@ async def get_table_schema(
     try:
         # First try to get from cache
         table_info = cache.get_table(database, schema, table)
-        
+
         if not table_info:
             # If not in cache, try direct query
             logger.info(f"Table {database}.{schema}.{table} not in cache, querying directly")
-            
+
             # Get column information
             columns = connection.get_table_columns(database, schema, table)
-            
+
             if not columns:
                 return {
                     "status": "not_found",
@@ -57,7 +54,7 @@ async def get_table_schema(
                     "schema": schema,
                     "table": table
                 }
-            
+
             # Build response from direct query
             result = {
                 "status": "success",
@@ -80,7 +77,7 @@ async def get_table_schema(
                     "comment": col.comment,
                     "is_primary_key": col.is_primary_key
                 })
-            
+
             result = {
                 "status": "success",
                 "database": table_info.database,
@@ -92,7 +89,7 @@ async def get_table_schema(
                 "comment": table_info.comment,
                 "source": "cache"
             }
-        
+
         # Add sample data if requested
         if include_sample:
             try:
@@ -101,9 +98,9 @@ async def get_table_schema(
                 FROM {database}.{schema}.{table}
                 LIMIT {sample_rows}
                 """
-                
+
                 sample_result = connection.execute_query(sample_query)
-                
+
                 if sample_result.data:
                     result["sample_data"] = {
                         "rows": sample_result.data,
@@ -115,14 +112,14 @@ async def get_table_schema(
                         "message": "Table is empty or no data accessible",
                         "row_count": 0
                     }
-                    
+
             except Exception as e:
                 result["sample_data"] = {
                     "error": f"Failed to retrieve sample data: {str(e)}"
                 }
-        
+
         return result
-        
+
     except Exception as e:
         logger.error(f"Failed to get table schema: {str(e)}")
         return {
@@ -138,7 +135,7 @@ async def describe_table(
     connection: SnowflakeConnection,
     full_table_name: str,
     include_stats: bool = False
-) -> Dict:
+) -> dict:
     """
     Describe a table using its fully qualified name.
     
@@ -159,20 +156,20 @@ async def describe_table(
                 "message": "Invalid table name format. Expected: database.schema.table",
                 "provided": full_table_name
             }
-        
+
         database, schema, table = parts
-        
+
         # Use DESCRIBE command
         describe_query = f"DESCRIBE TABLE {database}.{schema}.{table}"
         result = connection.execute_query(describe_query)
-        
+
         if not result.data:
             return {
                 "status": "not_found",
                 "message": f"Table {full_table_name} not found",
                 "table": full_table_name
             }
-        
+
         # Format column information
         columns = []
         for row in result.data:
@@ -188,7 +185,7 @@ async def describe_table(
                 "expression": row.get('expression'),
                 "comment": row.get('comment')
             })
-        
+
         response = {
             "status": "success",
             "table": full_table_name,
@@ -198,7 +195,7 @@ async def describe_table(
             "columns": columns,
             "column_count": len(columns)
         }
-        
+
         # Add table statistics if requested
         if include_stats:
             try:
@@ -213,9 +210,9 @@ async def describe_table(
                 WHERE TABLE_SCHEMA = '{schema}'
                 AND TABLE_NAME = '{table}'
                 """
-                
+
                 stats_result = connection.execute_query(stats_query)
-                
+
                 if stats_result.data and len(stats_result.data) > 0:
                     stats = stats_result.data[0]
                     response["statistics"] = {
@@ -225,14 +222,14 @@ async def describe_table(
                         "created": str(stats.get('CREATED')) if stats.get('CREATED') else None,
                         "comment": stats.get('COMMENT')
                     }
-                    
+
             except Exception as e:
                 response["statistics"] = {
                     "error": f"Failed to retrieve statistics: {str(e)}"
                 }
-        
+
         return response
-        
+
     except Exception as e:
         logger.error(f"Failed to describe table: {str(e)}")
         return {

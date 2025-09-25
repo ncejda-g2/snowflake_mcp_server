@@ -4,14 +4,14 @@ import csv
 import logging
 import os
 import time
-from typing import Dict, Any, Optional
 from datetime import datetime
+from typing import Any
+
 import sqlparse
 
-from server.snowflake_connection import SnowflakeConnection, QueryValidator
+from server.constants import CSV_DELIMITER, CSV_INCLUDE_HEADERS, CSV_NULL_VALUE
 from server.schema_cache import SchemaCache
-from server.constants import CSV_DELIMITER, CSV_NULL_VALUE, CSV_INCLUDE_HEADERS
-
+from server.snowflake_connection import QueryValidator, SnowflakeConnection
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 STREAMING_BATCH_SIZE = 10000
 
 
-def _write_sql_file(sql: str, csv_path: str) -> Dict[str, Any]:
+def _write_sql_file(sql: str, csv_path: str) -> dict[str, Any]:
     """
     Write the SQL query to a .sql file alongside the CSV file.
 
@@ -70,7 +70,7 @@ def _write_sql_file(sql: str, csv_path: str) -> Dict[str, Any]:
         }
 
 
-def _cleanup_partial_files(csv_path: str, sql_path: Optional[str] = None) -> None:
+def _cleanup_partial_files(csv_path: str, sql_path: str | None = None) -> None:
     """
     Clean up partial files in case of error.
 
@@ -99,10 +99,10 @@ async def execute_big_query_to_disk(
     cache: SchemaCache,
     sql: str,
     file_path: str,
-    database: Optional[str] = None,
-    schema: Optional[str] = None,
+    database: str | None = None,
+    schema: str | None = None,
     timeout_seconds: int = 300
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Execute a large read-only SQL query and stream results directly to a CSV file.
 
@@ -192,93 +192,73 @@ async def execute_big_query_to_disk(
     # Track execution
     start_time = time.time()
     row_count = 0
-    csv_writer = None
-    csvfile = None
+    column_names = []
 
     try:
-        # Open CSV file for writing
-        csvfile = open(expanded_path, 'w', newline='', encoding='utf-8')
+        # Use context manager for CSV file
+        with open(expanded_path, 'w', newline='', encoding='utf-8') as csvfile:
+            logger.info(f"Executing query with {timeout_seconds}s timeout and streaming to {expanded_path}")
 
-        # Use streaming to handle large result sets
-        logger.info(f"Executing query with {timeout_seconds}s timeout and streaming to {expanded_path}")
-
-        # Set timeout for this query
-        original_timeout = None
-        if connection.connection:
-            # Save original timeout if it exists
-            try:
+            # Set timeout for this query
+            if connection.connection:
                 with connection.connection.cursor() as cursor:
-                    cursor.execute("SHOW PARAMETERS LIKE 'STATEMENT_TIMEOUT_IN_SECONDS' IN SESSION")
-                    result = cursor.fetchone()
-                    if result:
-                        original_timeout = result.get('value')
-            except Exception:
-                pass  # Ignore errors getting original timeout
+                    cursor.execute(f"ALTER SESSION SET STATEMENT_TIMEOUT_IN_SECONDS = {timeout_seconds}")
 
-            # Set new timeout
-            with connection.connection.cursor() as cursor:
-                cursor.execute(f"ALTER SESSION SET STATEMENT_TIMEOUT_IN_SECONDS = {timeout_seconds}")
+            # Execute query using streaming
+            try:
+                first_batch = True
+                csv_writer = None
 
-        # Execute query using streaming
-        try:
-            first_batch = True
-            column_names = []
+                for batch in connection.execute_query_stream(
+                    sql=sql,
+                    database=database,
+                    schema=schema,
+                    batch_size=STREAMING_BATCH_SIZE
+                ):
+                    if first_batch:
+                        # Get column names from first batch
+                        if batch:
+                            column_names = list(batch[0].keys())
+                            csv_writer = csv.DictWriter(
+                                csvfile,
+                                fieldnames=column_names,
+                                delimiter=CSV_DELIMITER,
+                                restval=CSV_NULL_VALUE
+                            )
 
-            for batch in connection.execute_query_stream(
-                sql=sql,
-                database=database,
-                schema=schema,
-                batch_size=STREAMING_BATCH_SIZE
-            ):
-                if first_batch:
-                    # Get column names from first batch
-                    if batch:
-                        column_names = list(batch[0].keys())
-                        csv_writer = csv.DictWriter(
-                            csvfile,
-                            fieldnames=column_names,
-                            delimiter=CSV_DELIMITER,
-                            restval=CSV_NULL_VALUE
-                        )
+                            # Write headers if configured
+                            if CSV_INCLUDE_HEADERS:
+                                csv_writer.writeheader()
+                        first_batch = False
 
-                        # Write headers if configured
-                        if CSV_INCLUDE_HEADERS:
-                            csv_writer.writeheader()
-                    first_batch = False
+                    # Write batch to CSV
+                    if csv_writer:
+                        for row in batch:
+                            # Convert values to strings, handling None and datetime
+                            csv_row = {}
+                            for col_name in column_names:
+                                value = row.get(col_name)
+                                if value is None:
+                                    csv_row[col_name] = CSV_NULL_VALUE
+                                elif isinstance(value, datetime):
+                                    csv_row[col_name] = value.isoformat()
+                                else:
+                                    csv_row[col_name] = str(value)
 
-                # Write batch to CSV
-                for row in batch:
-                    # Convert values to strings, handling None and datetime
-                    csv_row = {}
-                    for col_name in column_names:
-                        value = row.get(col_name)
-                        if value is None:
-                            csv_row[col_name] = CSV_NULL_VALUE
-                        elif isinstance(value, datetime):
-                            csv_row[col_name] = value.isoformat()
-                        else:
-                            csv_row[col_name] = str(value)
+                            csv_writer.writerow(csv_row)
+                            row_count += 1
 
-                    csv_writer.writerow(csv_row)
-                    row_count += 1
+                    # Log progress every 100k rows
+                    if row_count > 0 and row_count % 100000 == 0:
+                        logger.info(f"Streamed {row_count:,} rows to disk...")
 
-                # Log progress every 100k rows
-                if row_count > 0 and row_count % 100000 == 0:
-                    logger.info(f"Streamed {row_count:,} rows to disk...")
-
-        finally:
-            # Restore original timeout
-            if connection.connection and original_timeout is not None:
-                try:
+            finally:
+                # Restore to default timeout (300 seconds)
+                if connection.connection:
                     with connection.connection.cursor() as cursor:
-                        cursor.execute(f"ALTER SESSION SET STATEMENT_TIMEOUT_IN_SECONDS = {original_timeout}")
-                except Exception:
-                    pass  # Ignore errors restoring timeout
+                        cursor.execute("ALTER SESSION SET STATEMENT_TIMEOUT_IN_SECONDS = 300")
 
-        # Close the CSV file
-        csvfile.close()
-        csvfile = None
-
+        # File is now closed by context manager
         # Get file size
         file_size = os.path.getsize(expanded_path)
         file_size_mb = file_size / (1024 * 1024)
@@ -311,8 +291,6 @@ async def execute_big_query_to_disk(
     except ValueError as e:
         # Query validation errors
         logger.error(f"Query validation failed: {str(e)}")
-        if csvfile:
-            csvfile.close()
         _cleanup_partial_files(expanded_path, None)  # Don't clean up SQL file since we didn't create it
         return {
             "status": "error",
@@ -322,8 +300,6 @@ async def execute_big_query_to_disk(
 
     except Exception as e:
         logger.error(f"Query execution failed: {str(e)}")
-        if csvfile:
-            csvfile.close()
         _cleanup_partial_files(expanded_path, None)  # Don't clean up SQL file since we didn't create it
         return {
             "status": "error",
