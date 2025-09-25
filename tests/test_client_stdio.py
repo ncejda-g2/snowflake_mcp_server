@@ -34,11 +34,7 @@ async def test_mcp_server():
         return
 
     # Create server parameters to spawn a new instance for testing
-    server_params = StdioServerParameters(
-        command="python",
-        args=["main.py"],
-        env=env
-    )
+    server_params = StdioServerParameters(command="python", args=["main.py"], env=env)
 
     print("🚀 Starting test client for Snowflake MCP Server...")
     print("=" * 60)
@@ -65,8 +61,7 @@ async def test_mcp_server():
                 print("-" * 40)
                 try:
                     result = await session.call_tool(
-                        "refresh_catalog",
-                        arguments={"force": False}
+                        "refresh_catalog", arguments={"force": False}
                     )
                     content = result.content[0].text if result.content else "No content"
                     print(f"✅ Success: {content[:200]}...")
@@ -77,19 +72,16 @@ async def test_mcp_server():
                 print("\n🔍 Test 2: Inspecting schemas...")
                 print("-" * 40)
                 try:
-                    result = await session.call_tool(
-                        "inspect_schemas",
-                        arguments={}
-                    )
+                    result = await session.call_tool("inspect_schemas", arguments={})
                     content = result.content[0].text if result.content else "No content"
                     # Parse and display nicely
                     try:
                         data = json.loads(content)
                         if "databases" in data:
                             print(f"✅ Found {len(data['databases'])} databases")
-                            for db in data['databases'][:3]:  # Show first 3
+                            for db in data["databases"][:3]:  # Show first 3
                                 print(f"   - {db}")
-                            if len(data['databases']) > 3:
+                            if len(data["databases"]) > 3:
                                 print(f"   ... and {len(data['databases']) - 3} more")
                         else:
                             print(f"✅ Result: {content[:200]}...")
@@ -103,8 +95,7 @@ async def test_mcp_server():
                 print("-" * 40)
                 try:
                     result = await session.call_tool(
-                        "search_tables",
-                        arguments={"search_term": "customer"}
+                        "search_tables", arguments={"search_term": "customer"}
                     )
                     content = result.content[0].text if result.content else "No content"
                     # Parse and display nicely
@@ -112,9 +103,11 @@ async def test_mcp_server():
                         data = json.loads(content)
                         if "tables" in data:
                             print(f"✅ Found {len(data['tables'])} matching tables")
-                            for table in data['tables'][:3]:  # Show first 3
-                                print(f"   - {table.get('database', 'N/A')}.{table.get('schema', 'N/A')}.{table.get('name', 'N/A')}")
-                            if len(data['tables']) > 3:
+                            for table in data["tables"][:3]:  # Show first 3
+                                print(
+                                    f"   - {table.get('database', 'N/A')}.{table.get('schema', 'N/A')}.{table.get('name', 'N/A')}"
+                                )
+                            if len(data["tables"]) > 3:
                                 print(f"   ... and {len(data['tables']) - 3} more")
                         else:
                             print(f"✅ Result: {content[:200]}...")
@@ -128,8 +121,7 @@ async def test_mcp_server():
                 print("-" * 40)
                 try:
                     result = await session.call_tool(
-                        "execute_query",
-                        arguments={"sql": "SHOW DATABASES"}
+                        "execute_query", arguments={"sql": "SHOW DATABASES"}
                     )
                     content = result.content[0].text if result.content else "No content"
                     # Parse and display nicely
@@ -137,9 +129,9 @@ async def test_mcp_server():
                         data = json.loads(content)
                         if "rows" in data:
                             print(f"✅ Query returned {len(data['rows'])} rows")
-                            for row in data['rows'][:3]:  # Show first 3
+                            for row in data["rows"][:3]:  # Show first 3
                                 print(f"   {row}")
-                            if len(data['rows']) > 3:
+                            if len(data["rows"]) > 3:
                                 print(f"   ... and {len(data['rows']) - 3} more")
                         else:
                             print(f"✅ Result: {content[:200]}...")
@@ -154,16 +146,20 @@ async def test_mcp_server():
                 try:
                     result = await session.call_tool(
                         "execute_query",
-                        arguments={"sql": "INSERT INTO test_table VALUES (1, 'test')"}
+                        arguments={"sql": "INSERT INTO test_table VALUES (1, 'test')"},
                     )
                     content = result.content[0].text if result.content else "No content"
                     # Check if the result is an error
                     try:
                         data = json.loads(content)
                         if data.get("status") == "error":
-                            print(f"✅ Correctly blocked: {data.get('message', 'Unknown error')[:100]}...")
+                            print(
+                                f"✅ Correctly blocked: {data.get('message', 'Unknown error')[:100]}..."
+                            )
                         else:
-                            print("❌ Unexpected success! This should have been blocked")
+                            print(
+                                "❌ Unexpected success! This should have been blocked"
+                            )
                             print(f"   Result: {content}")
                     except:
                         print(f"❌ Unexpected result format: {content}")
@@ -176,7 +172,9 @@ async def test_mcp_server():
     except Exception as e:
         print(f"\n❌ Error during testing: {e}")
         import traceback
+
         traceback.print_exc()
+
 
 if __name__ == "__main__":
     asyncio.run(test_mcp_server())

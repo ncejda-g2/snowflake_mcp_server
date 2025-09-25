@@ -10,10 +10,10 @@ from server.config import Config
 def setup_logging(config: Config | None = None) -> logging.Logger:
     """
     Set up logging configuration and return a logger instance.
-    
+
     Args:
         config: Optional configuration object
-        
+
     Returns:
         Configured logger instance
     """
@@ -23,10 +23,8 @@ def setup_logging(config: Config | None = None) -> logging.Logger:
     # Configure root logger
     logging.basicConfig(
         level=logging.DEBUG if config.debug else logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.StreamHandler(sys.stderr)
-        ]
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        handlers=[logging.StreamHandler(sys.stderr)],
     )
 
     # Create logger for the application

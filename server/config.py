@@ -84,6 +84,10 @@ class Config(BaseModel):
                 f"Missing required environment variables: {', '.join(missing)}"
             )
 
+        # After validation, these cannot be None - help mypy understand
+        if account is None or username is None or warehouse is None:
+            raise ValueError("Required environment variables are not set")
+
         return cls(
             account=account,
             username=username,

@@ -12,10 +12,7 @@ async def test_mcp_server():
     """Test the MCP server with basic operations"""
 
     # Connect to the running server
-    server_params = StdioServerParameters(
-        command="python",
-        args=["main.py"]
-    )
+    server_params = StdioServerParameters(command="python", args=["main.py"])
 
     async with stdio_client(server_params) as (read, write):
         async with ClientSession(read, write) as session:
@@ -31,36 +28,33 @@ async def test_mcp_server():
             # Test refresh_catalog
             print("\n1. Testing refresh_catalog...")
             result = await session.call_tool(
-                "refresh_catalog",
-                arguments={"force": False}
+                "refresh_catalog", arguments={"force": False}
             )
             print(f"   Result: {json.dumps(result.content, indent=2)}")
 
             # Test inspect_schemas
             print("\n2. Testing inspect_schemas...")
-            result = await session.call_tool(
-                "inspect_schemas",
-                arguments={}
-            )
-            print(f"   Result: {json.dumps(result.content, indent=2)[:500]}...")  # Show first 500 chars
+            result = await session.call_tool("inspect_schemas", arguments={})
+            print(
+                f"   Result: {json.dumps(result.content, indent=2)[:500]}..."
+            )  # Show first 500 chars
 
             # Test search_tables
             print("\n3. Testing search_tables...")
             result = await session.call_tool(
-                "search_tables",
-                arguments={"search_term": "customer"}
+                "search_tables", arguments={"search_term": "customer"}
             )
             print(f"   Result: {json.dumps(result.content, indent=2)[:500]}...")
 
             # Test a simple query
             print("\n4. Testing execute_query...")
             result = await session.call_tool(
-                "execute_query",
-                arguments={"query": "SHOW DATABASES"}
+                "execute_query", arguments={"query": "SHOW DATABASES"}
             )
             print(f"   Result: {json.dumps(result.content, indent=2)[:500]}...")
 
             print("\nAll tests completed successfully!")
+
 
 if __name__ == "__main__":
     asyncio.run(test_mcp_server())

@@ -6,11 +6,13 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 from threading import Lock
+from typing import Any
 
 
 @dataclass
 class ColumnInfo:
     """Information about a table column."""
+
     name: str
     data_type: str
     is_nullable: bool
@@ -23,6 +25,7 @@ class ColumnInfo:
 @dataclass
 class TableInfo:
     """Information about a database table."""
+
     database: str
     schema: str
     table_name: str
@@ -41,31 +44,31 @@ class TableInfo:
     def to_dict(self) -> dict:
         """Convert to dictionary for serialization."""
         return {
-            'database': self.database,
-            'schema': self.schema,
-            'table_name': self.table_name,
-            'table_type': self.table_type,
-            'columns': [asdict(col) for col in self.columns],
-            'row_count': self.row_count,
-            'bytes': self.bytes,
-            'comment': self.comment,
-            'last_altered': self.last_altered
+            "database": self.database,
+            "schema": self.schema,
+            "table_name": self.table_name,
+            "table_type": self.table_type,
+            "columns": [asdict(col) for col in self.columns],
+            "row_count": self.row_count,
+            "bytes": self.bytes,
+            "comment": self.comment,
+            "last_altered": self.last_altered,
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> 'TableInfo':
+    def from_dict(cls, data: dict) -> "TableInfo":
         """Create from dictionary."""
-        columns = [ColumnInfo(**col) for col in data.get('columns', [])]
+        columns = [ColumnInfo(**col) for col in data.get("columns", [])]
         return cls(
-            database=data['database'],
-            schema=data['schema'],
-            table_name=data['table_name'],
-            table_type=data.get('table_type', 'TABLE'),
+            database=data["database"],
+            schema=data["schema"],
+            table_name=data["table_name"],
+            table_type=data.get("table_type", "TABLE"),
             columns=columns,
-            row_count=data.get('row_count'),
-            bytes=data.get('bytes'),
-            comment=data.get('comment'),
-            last_altered=data.get('last_altered')
+            row_count=data.get("row_count"),
+            bytes=data.get("bytes"),
+            comment=data.get("comment"),
+            last_altered=data.get("last_altered"),
         )
 
 
@@ -75,7 +78,7 @@ class SchemaCache:
     def __init__(self, ttl_days: int = 5, cache_dir: Path | None = None):
         """
         Initialize schema cache.
-        
+
         Args:
             ttl_days: Time-to-live for cache in days
             cache_dir: Directory for cache persistence (defaults to ~/.snowflake_mcp/cache)
@@ -95,7 +98,9 @@ class SchemaCache:
         self.databases: set[str] = set()
         self.last_refresh: datetime | None = None
         self.refresh_in_progress: bool = False
-        self.processed_databases: set[str] = set()  # Track processed databases for resume
+        self.processed_databases: set[str] = (
+            set()
+        )  # Track processed databases for resume
 
         # Thread safety
         self._lock = Lock()
@@ -136,12 +141,12 @@ class SchemaCache:
     def get_table(self, database: str, schema: str, table: str) -> TableInfo | None:
         """
         Get table information from cache.
-        
+
         Args:
             database: Database name
             schema: Schema name
             table: Table name
-            
+
         Returns:
             TableInfo if found, None otherwise
         """
@@ -152,7 +157,8 @@ class SchemaCache:
         """Get all tables in a specific database."""
         database_upper = database.upper()
         return [
-            table for table in self.tables.values()
+            table
+            for table in self.tables.values()
             if table.database.upper() == database_upper
         ]
 
@@ -161,7 +167,8 @@ class SchemaCache:
         database_upper = database.upper()
         schema_upper = schema.upper()
         return [
-            table for table in self.tables.values()
+            table
+            for table in self.tables.values()
             if table.database.upper() == database_upper
             and table.schema.upper() == schema_upper
         ]
@@ -169,10 +176,10 @@ class SchemaCache:
     def search_tables(self, pattern: str) -> list[TableInfo]:
         """
         Search for tables matching a pattern.
-        
+
         Args:
             pattern: Search pattern (case-insensitive)
-            
+
         Returns:
             List of matching tables
         """
@@ -180,16 +187,18 @@ class SchemaCache:
         results = []
 
         for table in self.tables.values():
-            if (pattern_upper in table.table_name.upper() or
-                pattern_upper in table.full_name.upper() or
-                (table.comment and pattern_upper in table.comment.upper())):
+            if (
+                pattern_upper in table.table_name.upper()
+                or pattern_upper in table.full_name.upper()
+                or (table.comment and pattern_upper in table.comment.upper())
+            ):
                 results.append(table)
 
         return results
 
     def get_databases(self) -> list[str]:
         """Get list of all cached databases."""
-        return sorted(list(self.databases))
+        return sorted(self.databases)
 
     def get_schemas(self, database: str) -> list[str]:
         """Get list of all schemas in a database."""
@@ -200,12 +209,12 @@ class SchemaCache:
             if table.database.upper() == database_upper:
                 schemas.add(table.schema)
 
-        return sorted(list(schemas))
+        return sorted(schemas)
 
     def save_checkpoint(self, database: str, results: list[dict]) -> None:
         """
         Save a checkpoint file for a single database.
-        
+
         Args:
             database: Database name
             results: Query results for this database
@@ -214,12 +223,12 @@ class SchemaCache:
 
         try:
             checkpoint_data = {
-                'database': database,
-                'timestamp': datetime.now().isoformat(),
-                'results': results
+                "database": database,
+                "timestamp": datetime.now().isoformat(),
+                "results": results,
             }
 
-            with open(checkpoint_file, 'w') as f:
+            with open(checkpoint_file, "w") as f:
                 json.dump(checkpoint_data, f)
 
             self.logger.debug(f"Checkpoint saved for database {database}")
@@ -230,12 +239,12 @@ class SchemaCache:
     def load_checkpoints(self) -> tuple[list[dict], set[str]]:
         """
         Load all checkpoint files and return combined results.
-        
+
         Returns:
             Tuple of (combined results, set of processed databases)
         """
-        all_results = []
-        processed_databases = set()
+        all_results: list[dict] = []
+        processed_databases: set[str] = set()
 
         if not self.checkpoint_dir.exists():
             return all_results, processed_databases
@@ -247,8 +256,8 @@ class SchemaCache:
                 with open(checkpoint_file) as f:
                     checkpoint_data = json.load(f)
 
-                database = checkpoint_data['database']
-                results = checkpoint_data['results']
+                database = checkpoint_data["database"]
+                results = checkpoint_data["results"]
 
                 all_results.extend(results)
                 processed_databases.add(database)
@@ -258,7 +267,9 @@ class SchemaCache:
             except Exception as e:
                 self.logger.error(f"Failed to load checkpoint {checkpoint_file}: {e}")
 
-        self.logger.info(f"Loaded {len(checkpoint_files)} checkpoints with {len(all_results)} total results")
+        self.logger.info(
+            f"Loaded {len(checkpoint_files)} checkpoints with {len(all_results)} total results"
+        )
         return all_results, processed_databases
 
     def clear_checkpoints(self) -> None:
@@ -282,17 +293,14 @@ class SchemaCache:
     def save_error_log(self, errors: dict[str, str]) -> None:
         """
         Save error log for failed databases.
-        
+
         Args:
             errors: Dictionary mapping database names to error messages
         """
         try:
-            error_data = {
-                'timestamp': datetime.now().isoformat(),
-                'errors': errors
-            }
+            error_data = {"timestamp": datetime.now().isoformat(), "errors": errors}
 
-            with open(self.error_log_file, 'w') as f:
+            with open(self.error_log_file, "w") as f:
                 json.dump(error_data, f, indent=2)
 
             self.logger.info(f"Error log saved with {len(errors)} errors")
@@ -303,7 +311,7 @@ class SchemaCache:
     def load_error_log(self) -> dict[str, str]:
         """
         Load error log to identify failed databases.
-        
+
         Returns:
             Dictionary mapping database names to error messages
         """
@@ -314,7 +322,7 @@ class SchemaCache:
             with open(self.error_log_file) as f:
                 error_data = json.load(f)
 
-            return error_data.get('errors', {})
+            return error_data.get("errors", {})
 
         except Exception as e:
             self.logger.error(f"Failed to load error log: {e}")
@@ -334,10 +342,10 @@ class SchemaCache:
     def update_from_information_schema(self, results: list[dict]) -> int:
         """
         Update cache from INFORMATION_SCHEMA query results.
-        
+
         Args:
             results: Query results from INFORMATION_SCHEMA.COLUMNS
-            
+
         Returns:
             Number of tables processed
         """
@@ -351,13 +359,13 @@ class SchemaCache:
 
             for row in results:
                 # Extract table information
-                database = row.get('TABLE_CATALOG', row.get('table_catalog', ''))
-                schema = row.get('TABLE_SCHEMA', row.get('table_schema', ''))
-                table_name = row.get('TABLE_NAME', row.get('table_name', ''))
-                table_type = row.get('TABLE_TYPE', row.get('table_type', 'TABLE'))
+                database = row.get("TABLE_CATALOG", row.get("table_catalog", ""))
+                schema = row.get("TABLE_SCHEMA", row.get("table_schema", ""))
+                table_name = row.get("TABLE_NAME", row.get("table_name", ""))
+                table_type = row.get("TABLE_TYPE", row.get("table_type", "TABLE"))
 
                 # Skip system schemas
-                if schema.upper() in ('INFORMATION_SCHEMA', 'SNOWFLAKE'):
+                if schema.upper() in ("INFORMATION_SCHEMA", "SNOWFLAKE"):
                     continue
 
                 table_key = f"{database}.{schema}.{table_name}".upper()
@@ -365,42 +373,45 @@ class SchemaCache:
                 # Initialize table entry if needed
                 if table_key not in tables_data:
                     tables_data[table_key] = {
-                        'database': database,
-                        'schema': schema,
-                        'table_name': table_name,
-                        'table_type': table_type,
-                        'columns': [],
-                        'row_count': row.get('ROW_COUNT', row.get('row_count')),
-                        'bytes': row.get('BYTES', row.get('bytes')),
-                        'comment': row.get('TABLE_COMMENT', row.get('table_comment'))
+                        "database": database,
+                        "schema": schema,
+                        "table_name": table_name,
+                        "table_type": table_type,
+                        "columns": [],
+                        "row_count": row.get("ROW_COUNT", row.get("row_count")),
+                        "bytes": row.get("BYTES", row.get("bytes")),
+                        "comment": row.get("TABLE_COMMENT", row.get("table_comment")),
                     }
 
                 # Add column information
                 column = ColumnInfo(
-                    name=row.get('COLUMN_NAME', row.get('column_name', '')),
-                    data_type=row.get('DATA_TYPE', row.get('data_type', '')),
-                    is_nullable=row.get('IS_NULLABLE', row.get('is_nullable', 'YES')) == 'YES',
-                    ordinal_position=int(row.get('ORDINAL_POSITION', row.get('ordinal_position', 0))),
-                    comment=row.get('COLUMN_COMMENT', row.get('column_comment')),
-                    default_value=row.get('COLUMN_DEFAULT', row.get('column_default'))
+                    name=row.get("COLUMN_NAME", row.get("column_name", "")),
+                    data_type=row.get("DATA_TYPE", row.get("data_type", "")),
+                    is_nullable=row.get("IS_NULLABLE", row.get("is_nullable", "YES"))
+                    == "YES",
+                    ordinal_position=int(
+                        row.get("ORDINAL_POSITION", row.get("ordinal_position", 0))
+                    ),
+                    comment=row.get("COLUMN_COMMENT", row.get("column_comment")),
+                    default_value=row.get("COLUMN_DEFAULT", row.get("column_default")),
                 )
 
-                tables_data[table_key]['columns'].append(column)
+                tables_data[table_key]["columns"].append(column)
 
             # Create TableInfo objects
             for table_data in tables_data.values():
                 # Sort columns by ordinal position
-                table_data['columns'].sort(key=lambda x: x.ordinal_position)
+                table_data["columns"].sort(key=lambda x: x.ordinal_position)
 
                 table_info = TableInfo(
-                    database=table_data['database'],
-                    schema=table_data['schema'],
-                    table_name=table_data['table_name'],
-                    table_type=table_data['table_type'],
-                    columns=table_data['columns'],
-                    row_count=table_data.get('row_count'),
-                    bytes=table_data.get('bytes'),
-                    comment=table_data.get('comment')
+                    database=table_data["database"],
+                    schema=table_data["schema"],
+                    table_name=table_data["table_name"],
+                    table_type=table_data["table_type"],
+                    columns=table_data["columns"],
+                    row_count=table_data.get("row_count"),
+                    bytes=table_data.get("bytes"),
+                    comment=table_data.get("comment"),
                 )
 
                 # Directly add to tables without calling add_table (we already hold the lock)
@@ -412,7 +423,9 @@ class SchemaCache:
             self.last_refresh = datetime.now()
             self.refresh_in_progress = False
 
-            self.logger.info(f"Cache updated with {len(self.tables)} tables from {len(self.databases)} databases")
+            self.logger.info(
+                f"Cache updated with {len(self.tables)} tables from {len(self.databases)} databases"
+            )
 
             # Save to disk
             self.save()
@@ -423,19 +436,18 @@ class SchemaCache:
         """Save cache to disk."""
         try:
             cache_data = {
-                'version': '1.0',
-                'last_refresh': self.last_refresh.isoformat() if self.last_refresh else None,
-                'ttl_days': self.ttl_days,
-                'tables': {
-                    key: table.to_dict()
-                    for key, table in self.tables.items()
-                },
-                'databases': list(self.databases)
+                "version": "1.0",
+                "last_refresh": self.last_refresh.isoformat()
+                if self.last_refresh
+                else None,
+                "ttl_days": self.ttl_days,
+                "tables": {key: table.to_dict() for key, table in self.tables.items()},
+                "databases": list(self.databases),
             }
 
             # Write to temporary file first (atomic write)
-            temp_file = self.cache_file.with_suffix('.tmp')
-            with open(temp_file, 'w') as f:
+            temp_file = self.cache_file.with_suffix(".tmp")
+            with open(temp_file, "w") as f:
                 json.dump(cache_data, f, indent=2)
 
             # Move temporary file to actual cache file
@@ -449,7 +461,7 @@ class SchemaCache:
     def load(self) -> bool:
         """
         Load cache from disk.
-        
+
         Returns:
             True if cache was loaded successfully, False otherwise
         """
@@ -462,23 +474,24 @@ class SchemaCache:
                 cache_data = json.load(f)
 
             # Check version compatibility
-            version = cache_data.get('version', '0.0')
-            if version != '1.0':
+            version = cache_data.get("version", "0.0")
+            if version != "1.0":
                 self.logger.warning(f"Cache version mismatch: {version}")
                 return False
 
             # Load data
             with self._lock:
                 self.last_refresh = (
-                    datetime.fromisoformat(cache_data['last_refresh'])
-                    if cache_data.get('last_refresh') else None
+                    datetime.fromisoformat(cache_data["last_refresh"])
+                    if cache_data.get("last_refresh")
+                    else None
                 )
-                self.ttl_days = cache_data.get('ttl_days', self.ttl_days)
-                self.databases = set(cache_data.get('databases', []))
+                self.ttl_days = cache_data.get("ttl_days", self.ttl_days)
+                self.databases = set(cache_data.get("databases", []))
 
                 # Load tables
                 self.tables.clear()
-                for key, table_data in cache_data.get('tables', {}).items():
+                for key, table_data in cache_data.get("tables", {}).items():
                     try:
                         table_info = TableInfo.from_dict(table_data)
                         self.tables[key] = table_info
@@ -496,16 +509,20 @@ class SchemaCache:
             self.logger.error(f"Failed to load cache: {e}")
             return False
 
-    def get_statistics(self) -> dict:
+    def get_statistics(self) -> dict[str, Any]:
         """Get cache statistics."""
-        stats = {
-            'total_tables': len(self.tables),
-            'total_databases': len(self.databases),
-            'last_refresh': self.last_refresh.isoformat() if self.last_refresh else None,
-            'is_expired': self.is_expired(),
-            'ttl_days': self.ttl_days,
-            'cache_file': str(self.cache_file),
-            'cache_size_bytes': self.cache_file.stat().st_size if self.cache_file.exists() else 0
+        stats: dict[str, Any] = {
+            "total_tables": len(self.tables),
+            "total_databases": len(self.databases),
+            "last_refresh": self.last_refresh.isoformat()
+            if self.last_refresh
+            else None,
+            "is_expired": self.is_expired(),
+            "ttl_days": self.ttl_days,
+            "cache_file": str(self.cache_file),
+            "cache_size_bytes": self.cache_file.stat().st_size
+            if self.cache_file.exists()
+            else 0,
         }
 
         # Add per-database statistics
@@ -513,10 +530,10 @@ class SchemaCache:
         for db in self.databases:
             tables = self.get_tables_in_database(db)
             db_stats[db] = {
-                'table_count': len(tables),
-                'total_columns': sum(len(t.columns) for t in tables)
+                "table_count": len(tables),
+                "total_columns": sum(len(t.columns) for t in tables),
             }
-        stats['databases'] = db_stats
+        stats["databases"] = db_stats
 
         return stats
 

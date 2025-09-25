@@ -236,6 +236,8 @@ class SnowflakeConnection:
 
     def _setup_read_only_session(self) -> None:
         """Configure session for read-only access."""
+        if self.connection is None:
+            raise RuntimeError("Connection not established")
         with self.connection.cursor() as cursor:
             # Set session parameters for safety
             session_params = [
@@ -254,9 +256,9 @@ class SnowflakeConnection:
             # Get connection metadata
             cursor.execute(
                 """
-                SELECT CURRENT_USER() as user, 
+                SELECT CURRENT_USER() as user,
                        CURRENT_ROLE() as role,
-                       CURRENT_WAREHOUSE() as warehouse, 
+                       CURRENT_WAREHOUSE() as warehouse,
                        CURRENT_DATABASE() as database,
                        CURRENT_SCHEMA() as schema
             """
@@ -412,7 +414,7 @@ class SnowflakeConnection:
             self.query_log.append(query_entry)
 
             self.logger.error(error_msg)
-            raise ValueError(error_msg)
+            raise ValueError(error_msg) from None
 
         except Exception as e:
             query_entry["status"] = "error"
@@ -421,7 +423,6 @@ class SnowflakeConnection:
 
             self.logger.error(f"Query execution failed: {str(e)}")
             raise
-
 
     def execute_query_stream(
         self,
@@ -529,7 +530,7 @@ class SnowflakeConnection:
         """Test if connection is alive and working."""
         try:
             result = self.execute_query("SELECT 1 AS test")
-            return result.data and result.data[0]["TEST"] == 1
+            return bool(result.data and result.data[0]["TEST"] == 1)
         except Exception as e:
             self.logger.error(f"Connection test failed: {e}")
             return False

@@ -46,9 +46,9 @@ async def test_checkpointing():
     print(f"Databases scanned: {result.get('databases_scanned', 0)}")
     print(f"Databases failed: {result.get('databases_failed', 0)}")
 
-    if result.get('errors'):
+    if result.get("errors"):
         print(f"Errors: {len(result['errors'])} databases failed")
-        for error in result['errors'][:3]:  # Show first 3 errors
+        for error in result["errors"][:3]:  # Show first 3 errors
             print(f"  - {error[:100]}...")
 
     # Check if checkpoints were created and cleaned up
@@ -56,7 +56,9 @@ async def test_checkpointing():
     print(f"\nCheckpoint files after completion: {len(checkpoint_files)}")
 
     if checkpoint_files:
-        print("WARNING: Checkpoint files should be cleaned up after successful completion!")
+        print(
+            "WARNING: Checkpoint files should be cleaned up after successful completion!"
+        )
 
     # Test 2: Simulate interrupted refresh
     print("\n--- Test 2: Simulating Interrupted Refresh ---")
@@ -66,36 +68,38 @@ async def test_checkpointing():
 
     # Manually create some checkpoint files to simulate interruption
     test_checkpoint_data = {
-        'database': 'TEST_DB',
-        'timestamp': datetime.now().isoformat(),
-        'results': [
+        "database": "TEST_DB",
+        "timestamp": datetime.now().isoformat(),
+        "results": [
             {
-                'TABLE_CATALOG': 'TEST_DB',
-                'TABLE_SCHEMA': 'PUBLIC',
-                'TABLE_NAME': 'TEST_TABLE',
-                'TABLE_TYPE': 'TABLE',
-                'COLUMN_NAME': 'ID',
-                'DATA_TYPE': 'NUMBER',
-                'IS_NULLABLE': 'NO',
-                'ORDINAL_POSITION': 1,
-                'COLUMN_DEFAULT': None,
-                'COLUMN_COMMENT': None,
-                'TABLE_COMMENT': 'Test table',
-                'ROW_COUNT': 100,
-                'BYTES': 1024
+                "TABLE_CATALOG": "TEST_DB",
+                "TABLE_SCHEMA": "PUBLIC",
+                "TABLE_NAME": "TEST_TABLE",
+                "TABLE_TYPE": "TABLE",
+                "COLUMN_NAME": "ID",
+                "DATA_TYPE": "NUMBER",
+                "IS_NULLABLE": "NO",
+                "ORDINAL_POSITION": 1,
+                "COLUMN_DEFAULT": None,
+                "COLUMN_COMMENT": None,
+                "TABLE_COMMENT": "Test table",
+                "ROW_COUNT": 100,
+                "BYTES": 1024,
             }
-        ]
+        ],
     }
 
     checkpoint_file = checkpoint_dir / "checkpoint_TEST_DB.json"
-    with open(checkpoint_file, 'w') as f:
+    with open(checkpoint_file, "w") as f:
         json.dump(test_checkpoint_data, f)
 
     print(f"Created test checkpoint: {checkpoint_file}")
 
     # Test loading checkpoints
     loaded_results, loaded_databases = cache.load_checkpoints()
-    print(f"Loaded {len(loaded_results)} results from {len(loaded_databases)} databases")
+    print(
+        f"Loaded {len(loaded_results)} results from {len(loaded_databases)} databases"
+    )
     print(f"Processed databases: {loaded_databases}")
 
     # Test 3: Resume from checkpoint
@@ -112,8 +116,8 @@ async def test_checkpointing():
 
     # Create a test error log
     test_errors = {
-        'FAILED_DB_1': 'Connection timeout',
-        'FAILED_DB_2': 'Permission denied'
+        "FAILED_DB_1": "Connection timeout",
+        "FAILED_DB_2": "Permission denied",
     }
 
     cache.save_error_log(test_errors)

@@ -10,11 +10,7 @@ from server.app import config, mcp
 def main():
     """Main entry point."""
     # Validate required environment variables
-    required_vars = [
-        "SNOWFLAKE_ACCOUNT",
-        "SNOWFLAKE_USERNAME",
-        "SNOWFLAKE_WAREHOUSE"
-    ]
+    required_vars = ["SNOWFLAKE_ACCOUNT", "SNOWFLAKE_USERNAME", "SNOWFLAKE_WAREHOUSE"]
 
     missing_vars = []
     for var in required_vars:
@@ -25,7 +21,10 @@ def main():
         print("Error: Missing required environment variables:", file=sys.stderr)
         for var in missing_vars:
             print(f"  - {var}", file=sys.stderr)
-        print("\nPlease set these environment variables before starting the server.", file=sys.stderr)
+        print(
+            "\nPlease set these environment variables before starting the server.",
+            file=sys.stderr,
+        )
         print("\nExample:", file=sys.stderr)
         print('  export SNOWFLAKE_ACCOUNT="xy12345.us-east-1"', file=sys.stderr)
         print('  export SNOWFLAKE_USERNAME="user@company.com"', file=sys.stderr)

@@ -12,21 +12,21 @@ async def refresh_catalog(
     connection: SnowflakeConnection,
     cache: SchemaCache,
     force: bool = False,
-    resume: bool = True
+    resume: bool = True,
 ) -> dict:
     """
     Refresh the schema catalog cache by scanning all accessible databases.
-    
+
     This tool queries INFORMATION_SCHEMA across all databases to build
     a comprehensive index of tables, schemas, and columns. Supports
     checkpointing for reliability and resume capability.
-    
+
     Args:
         connection: Active Snowflake connection
         cache: Schema cache instance
         force: Force refresh even if cache is not expired
         resume: Whether to resume from checkpoints if they exist
-        
+
     Returns:
         Dictionary with refresh results and statistics
     """
@@ -37,22 +37,22 @@ async def refresh_catalog(
             return {
                 "status": "cache_valid",
                 "message": "Cache is still valid and not expired",
-                "statistics": stats
+                "statistics": stats,
             }
 
     # Check if refresh is already in progress
     if cache.refresh_in_progress:
         return {
             "status": "in_progress",
-            "message": "Catalog refresh is already in progress"
+            "message": "Catalog refresh is already in progress",
         }
 
     try:
         cache.refresh_in_progress = True
 
         # Check for existing checkpoints to resume from
-        checkpoint_results = []
-        processed_databases = set()
+        checkpoint_results: list[dict] = []
+        processed_databases: set[str] = set()
         failed_databases = {}
 
         if resume:
@@ -60,8 +60,12 @@ async def refresh_catalog(
             failed_databases = cache.load_error_log()
 
             if checkpoint_results:
-                logger.info(f"Resuming from {len(processed_databases)} checkpointed databases")
-                logger.info(f"Found {len(failed_databases)} previously failed databases to retry")
+                logger.info(
+                    f"Resuming from {len(processed_databases)} checkpointed databases"
+                )
+                logger.info(
+                    f"Found {len(failed_databases)} previously failed databases to retry"
+                )
 
         logger.info("Starting catalog refresh...")
 
@@ -76,7 +80,7 @@ async def refresh_catalog(
         for database in databases:
             try:
                 # Skip system databases
-                if database.upper() in ('SNOWFLAKE', 'SNOWFLAKE_SAMPLE_DATA'):
+                if database.upper() in ("SNOWFLAKE", "SNOWFLAKE_SAMPLE_DATA"):
                     logger.debug(f"Skipping system database: {database}")
                     continue
 
@@ -90,7 +94,7 @@ async def refresh_catalog(
                 # Query to get all tables and columns in this database
                 # Join TABLES and COLUMNS to get complete metadata
                 query = f"""
-                SELECT 
+                SELECT
                     c.TABLE_CATALOG,
                     c.TABLE_SCHEMA,
                     c.TABLE_NAME,
@@ -127,7 +131,9 @@ async def refresh_catalog(
                     if database in failed_databases:
                         del failed_databases[database]
 
-                    logger.info(f"Retrieved {len(result.data)} column definitions from {database}")
+                    logger.info(
+                        f"Retrieved {len(result.data)} column definitions from {database}"
+                    )
 
             except Exception as e:
                 error_msg = f"Failed to query database {database}: {str(e)}"
@@ -158,22 +164,21 @@ async def refresh_catalog(
                 "databases_failed": len(errors),
                 "errors": list(errors.values()) if errors else None,
                 "failed_databases": list(errors.keys()) if errors else None,
-                "statistics": stats
+                "statistics": stats,
             }
         else:
             return {
                 "status": "error",
                 "message": "No schema information retrieved",
-                "errors": list(errors.values()) if errors else ["No databases could be accessed"],
-                "failed_databases": list(errors.keys()) if errors else None
+                "errors": list(errors.values())
+                if errors
+                else ["No databases could be accessed"],
+                "failed_databases": list(errors.keys()) if errors else None,
             }
 
     except Exception as e:
         logger.error(f"Catalog refresh failed: {str(e)}")
         cache.refresh_in_progress = False
-        return {
-            "status": "error",
-            "message": f"Catalog refresh failed: {str(e)}"
-        }
+        return {"status": "error", "message": f"Catalog refresh failed: {str(e)}"}
     finally:
         cache.refresh_in_progress = False

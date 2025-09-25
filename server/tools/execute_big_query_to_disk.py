@@ -32,42 +32,39 @@ def _write_sql_file(sql: str, csv_path: str) -> dict[str, Any]:
     """
     try:
         # Derive SQL file path from CSV path
-        if csv_path.lower().endswith('.csv'):
-            sql_path = csv_path[:-4] + '.sql'
+        if csv_path.lower().endswith(".csv"):
+            sql_path = csv_path[:-4] + ".sql"
         else:
-            sql_path = csv_path + '.sql'
+            sql_path = csv_path + ".sql"
 
         # Format SQL for readability
         formatted_sql = sqlparse.format(
             sql,
             reindent=True,
-            keyword_case='upper',
+            keyword_case="upper",
             strip_comments=False,
             use_space_around_operators=True,
-            indent_width=2
+            indent_width=2,
         )
 
         # Ensure SQL ends with semicolon
-        if not formatted_sql.rstrip().endswith(';'):
-            formatted_sql = formatted_sql.rstrip() + ';'
+        if not formatted_sql.rstrip().endswith(";"):
+            formatted_sql = formatted_sql.rstrip() + ";"
 
         # Write SQL file
-        with open(sql_path, 'w', encoding='utf-8') as f:
+        with open(sql_path, "w", encoding="utf-8") as f:
             f.write(formatted_sql)
-            f.write('\n')  # Add newline at end of file
+            f.write("\n")  # Add newline at end of file
 
         return {
             "status": "success",
             "sql_file_path": sql_path,
-            "message": f"SQL query exported to {sql_path}"
+            "message": f"SQL query exported to {sql_path}",
         }
 
     except Exception as e:
         logger.warning(f"Failed to write SQL file: {str(e)}")
-        return {
-            "status": "warning",
-            "message": f"Failed to export SQL file: {str(e)}"
-        }
+        return {"status": "warning", "message": f"Failed to export SQL file: {str(e)}"}
 
 
 def _cleanup_partial_files(csv_path: str, sql_path: str | None = None) -> None:
@@ -101,7 +98,7 @@ async def execute_big_query_to_disk(
     file_path: str,
     database: str | None = None,
     schema: str | None = None,
-    timeout_seconds: int = 300
+    timeout_seconds: int = 300,
 ) -> dict[str, Any]:
     """
     Execute a large read-only SQL query and stream results directly to a CSV file.
@@ -124,32 +121,25 @@ async def execute_big_query_to_disk(
     """
     # Validate timeout
     if timeout_seconds < 1:
-        return {
-            "status": "error",
-            "message": "Timeout must be at least 1 second"
-        }
+        return {"status": "error", "message": "Timeout must be at least 1 second"}
     if timeout_seconds > 3600:
         return {
             "status": "error",
-            "message": "Timeout cannot exceed 3600 seconds (1 hour)"
+            "message": "Timeout cannot exceed 3600 seconds (1 hour)",
         }
 
     # First validate the query for safety (reuse existing validator)
     validator = QueryValidator()
     is_valid, error_msg, query_type = validator.validate(sql)
     if not is_valid:
-        return {
-            "status": "error",
-            "message": error_msg,
-            "query_type": str(query_type)
-        }
+        return {"status": "error", "message": error_msg, "query_type": str(query_type)}
 
     # Check cache is populated (required before queries)
     if cache.is_empty():
         return {
             "status": "error",
             "message": "Schema cache is empty. Please run refresh_catalog first.",
-            "action_required": "refresh_catalog"
+            "action_required": "refresh_catalog",
         }
 
     if cache.is_expired():
@@ -159,22 +149,22 @@ async def execute_big_query_to_disk(
     expanded_path = os.path.expanduser(os.path.expandvars(file_path))
 
     # Derive SQL file path
-    if expanded_path.lower().endswith('.csv'):
-        sql_file_path = expanded_path[:-4] + '.sql'
+    if expanded_path.lower().endswith(".csv"):
+        sql_file_path = expanded_path[:-4] + ".sql"
     else:
-        sql_file_path = expanded_path + '.sql'
+        sql_file_path = expanded_path + ".sql"
 
     # Check if files already exist (before executing query to avoid costs)
     if os.path.exists(expanded_path):
         return {
             "status": "error",
-            "message": f"CSV file already exists: {expanded_path}. Please use a different filename."
+            "message": f"CSV file already exists: {expanded_path}. Please use a different filename.",
         }
 
     if os.path.exists(sql_file_path):
         return {
             "status": "error",
-            "message": f"SQL file already exists: {sql_file_path}. Please use a different filename."
+            "message": f"SQL file already exists: {sql_file_path}. Please use a different filename.",
         }
 
     # Create directory if it doesn't exist
@@ -186,7 +176,7 @@ async def execute_big_query_to_disk(
         except Exception as e:
             return {
                 "status": "error",
-                "message": f"Failed to create directory {directory}: {str(e)}"
+                "message": f"Failed to create directory {directory}: {str(e)}",
             }
 
     # Track execution
@@ -196,13 +186,17 @@ async def execute_big_query_to_disk(
 
     try:
         # Use context manager for CSV file
-        with open(expanded_path, 'w', newline='', encoding='utf-8') as csvfile:
-            logger.info(f"Executing query with {timeout_seconds}s timeout and streaming to {expanded_path}")
+        with open(expanded_path, "w", newline="", encoding="utf-8") as csvfile:
+            logger.info(
+                f"Executing query with {timeout_seconds}s timeout and streaming to {expanded_path}"
+            )
 
             # Set timeout for this query
             if connection.connection:
                 with connection.connection.cursor() as cursor:
-                    cursor.execute(f"ALTER SESSION SET STATEMENT_TIMEOUT_IN_SECONDS = {timeout_seconds}")
+                    cursor.execute(
+                        f"ALTER SESSION SET STATEMENT_TIMEOUT_IN_SECONDS = {timeout_seconds}"
+                    )
 
             # Execute query using streaming
             try:
@@ -213,7 +207,7 @@ async def execute_big_query_to_disk(
                     sql=sql,
                     database=database,
                     schema=schema,
-                    batch_size=STREAMING_BATCH_SIZE
+                    batch_size=STREAMING_BATCH_SIZE,
                 ):
                     if first_batch:
                         # Get column names from first batch
@@ -223,7 +217,7 @@ async def execute_big_query_to_disk(
                                 csvfile,
                                 fieldnames=column_names,
                                 delimiter=CSV_DELIMITER,
-                                restval=CSV_NULL_VALUE
+                                restval=CSV_NULL_VALUE,
                             )
 
                             # Write headers if configured
@@ -256,7 +250,9 @@ async def execute_big_query_to_disk(
                 # Restore to default timeout (300 seconds)
                 if connection.connection:
                     with connection.connection.cursor() as cursor:
-                        cursor.execute("ALTER SESSION SET STATEMENT_TIMEOUT_IN_SECONDS = 300")
+                        cursor.execute(
+                            "ALTER SESSION SET STATEMENT_TIMEOUT_IN_SECONDS = 300"
+                        )
 
         # File is now closed by context manager
         # Get file size
@@ -282,16 +278,23 @@ async def execute_big_query_to_disk(
         if sql_export_result:
             response["sql_export"] = sql_export_result
             if sql_export_result.get("status") == "success":
-                response["message"] += f" and SQL query to {sql_export_result.get('sql_file_path')}"
+                current_message = str(response["message"])
+                response["message"] = current_message + (
+                    f" and SQL query to {sql_export_result.get('sql_file_path')}"
+                )
 
-        logger.info(f"Completed: Exported {row_count:,} rows to {expanded_path} ({file_size_mb:.2f}MB) in {execution_time:.2f}s")
+        logger.info(
+            f"Completed: Exported {row_count:,} rows to {expanded_path} ({file_size_mb:.2f}MB) in {execution_time:.2f}s"
+        )
 
         return response
 
     except ValueError as e:
         # Query validation errors
         logger.error(f"Query validation failed: {str(e)}")
-        _cleanup_partial_files(expanded_path, None)  # Don't clean up SQL file since we didn't create it
+        _cleanup_partial_files(
+            expanded_path, None
+        )  # Don't clean up SQL file since we didn't create it
         return {
             "status": "error",
             "message": str(e),
@@ -300,7 +303,9 @@ async def execute_big_query_to_disk(
 
     except Exception as e:
         logger.error(f"Query execution failed: {str(e)}")
-        _cleanup_partial_files(expanded_path, None)  # Don't clean up SQL file since we didn't create it
+        _cleanup_partial_files(
+            expanded_path, None
+        )  # Don't clean up SQL file since we didn't create it
         return {
             "status": "error",
             "message": f"Query execution failed: {str(e)}",
