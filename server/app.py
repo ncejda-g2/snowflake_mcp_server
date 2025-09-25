@@ -14,7 +14,8 @@ from server.tools import (
     schema_inspector,
     table_inspector,
     query_executor,
-    save_to_csv
+    save_to_csv,
+    execute_big_query_to_disk
 )
 
 # Initialize configuration and logging
@@ -400,6 +401,71 @@ async def save_last_query_to_csv_tool(
 ) -> Dict[str, Any]:
     """Save the last query results to a CSV file."""
     return await save_to_csv.save_last_query_to_csv(file_path, export_sql)
+
+
+# Tool: Execute Big Query to Disk
+@mcp.tool(
+    name="execute_big_query_to_disk",
+    description="""Execute a large read-only SQL query and save results directly to a CSV file.
+
+    This tool is designed for queries that return large result sets that would exceed
+    token limits. It streams results directly to disk without returning the data in
+    the response, avoiding token limit issues.
+
+    Features:
+    - Streams results directly to disk (doesn't return data in response)
+    - Handles arbitrarily large result sets using streaming
+    - Returns only execution status, row count, and file size
+    - Exports SQL query to a .sql file alongside the CSV
+    - Configurable timeout for long-running queries
+
+    Parameters:
+    - sql: The SQL query to execute (must be read-only)
+    - file_path: The absolute or relative path where the CSV file should be saved
+    - database: Optional database context
+    - schema: Optional schema context
+    - timeout_seconds: Query timeout in seconds (default: 300, max: 3600)
+
+    Requirements:
+    - Schema cache must be populated (run refresh_catalog first)
+    - Query must be read-only (SELECT, SHOW, DESCRIBE, WITH)
+    - Files must not already exist (will not overwrite)
+
+    Examples:
+    - execute_big_query_to_disk("SELECT * FROM large_table", "~/Downloads/large_data.csv")
+    - execute_big_query_to_disk("SELECT * FROM sales_data", "/tmp/sales.csv", timeout_seconds=600)
+
+    Notes:
+    - CSV file uses comma delimiter, includes headers, empty string for NULLs
+    - SQL file is created only after successful CSV export
+    - Partial files are cleaned up on error
+    """
+)
+async def execute_big_query_to_disk_tool(
+    sql: str,
+    file_path: str,
+    database: Optional[str] = None,
+    schema: Optional[str] = None,
+    timeout_seconds: int = 300
+) -> Dict[str, Any]:
+    """Execute a large query and stream results to disk."""
+    try:
+        initialize_resources()
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Failed to initialize: {str(e)}"
+        }
+
+    assert connection is not None and cache is not None
+    return await execute_big_query_to_disk.execute_big_query_to_disk(
+        connection, cache,
+        sql=sql,
+        file_path=file_path,
+        database=database,
+        schema=schema,
+        timeout_seconds=timeout_seconds
+    )
 
 
 def main():
