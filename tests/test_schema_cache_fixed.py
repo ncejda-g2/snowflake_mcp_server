@@ -1,10 +1,8 @@
 """Fixed tests for server/schema_cache.py module."""
 
-import json
 import tempfile
 from datetime import datetime, timedelta
 from pathlib import Path
-from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
@@ -68,7 +66,7 @@ class TestSchemaCache:
             schema="PUBLIC",
             table_name="USERS",
             table_type="TABLE",
-            columns=[]
+            columns=[],
         )
 
         cache.add_table(table)
@@ -84,7 +82,7 @@ class TestSchemaCache:
             schema="PUBLIC",
             table_name="USERS",
             table_type="TABLE",
-            columns=[]
+            columns=[],
         )
         cache.add_table(table)
 
@@ -155,7 +153,7 @@ class TestSchemaCache:
             table_type="TABLE",
             columns=[
                 ColumnInfo("id", "NUMBER", False, 1),
-            ]
+            ],
         )
         cache.add_table(table)
         cache.last_refresh = datetime.now()
@@ -189,7 +187,9 @@ class TestSchemaCache:
     def test_get_statistics(self, cache):
         """Test getting cache statistics."""
         # Add some tables
-        table1 = TableInfo("DB1", "SCH1", "TAB1", "TABLE", [ColumnInfo("col1", "VARCHAR", True, 1)])
+        table1 = TableInfo(
+            "DB1", "SCH1", "TAB1", "TABLE", [ColumnInfo("col1", "VARCHAR", True, 1)]
+        )
         table2 = TableInfo("DB1", "SCH2", "TAB2", "VIEW", [])
 
         for table in [table1, table2]:
@@ -206,9 +206,7 @@ class TestSchemaCache:
     def test_save_and_load_checkpoints(self, cache):
         """Test checkpoint save/load functionality."""
         # Save checkpoint
-        checkpoint_data = [
-            {"TABLE_NAME": "TEST_TABLE", "DATABASE_NAME": "TEST_DB"}
-        ]
+        checkpoint_data = [{"TABLE_NAME": "TEST_TABLE", "DATABASE_NAME": "TEST_DB"}]
         cache.save_checkpoint("TEST_DB", checkpoint_data)
 
         # Load checkpoints
@@ -255,7 +253,7 @@ class TestSchemaCache:
                 "BYTES": 5000,
                 "COMMENT": "Test table",
                 "CREATED": "2024-01-01",
-                "LAST_ALTERED": "2024-01-02"
+                "LAST_ALTERED": "2024-01-02",
             }
         ]
 

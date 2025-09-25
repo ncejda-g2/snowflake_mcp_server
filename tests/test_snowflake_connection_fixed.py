@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 
 from server.config import Config
-from server.snowflake_connection import SnowflakeConnection, QueryValidator, QueryType
+from server.snowflake_connection import QueryType, QueryValidator, SnowflakeConnection
 
 
 class TestQueryValidator:
@@ -150,15 +150,16 @@ class TestSnowflakeConnection:
         """Test disconnecting when not connected."""
         connection.disconnect()  # Should not raise
 
-    @patch("server.snowflake_connection.snowflake.connector.connect")
-    def test_execute_query_success(self, mock_connect, connection):
+    def test_execute_query_success(self, connection):
         """Test successful query execution."""
         # Setup mock connection
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
         mock_cursor.fetchall.return_value = [(1, "test"), (2, "data")]
-        mock_cursor.description = [("id", None, None, None, None, None, None),
-                                   ("name", None, None, None, None, None, None)]
+        mock_cursor.description = [
+            ("id", None, None, None, None, None, None),
+            ("name", None, None, None, None, None, None),
+        ]
         mock_cursor.sfqid = "query-123"
         # The actual code calls connection.cursor(DictCursor) directly
         mock_conn.cursor.return_value = mock_cursor
@@ -191,7 +192,11 @@ class TestSnowflakeConnection:
         """Test getting query history."""
         # Add some history to query_log
         connection.query_log = [
-            {"query": "SELECT 1", "status": "success", "timestamp": 1704067200},  # Unix timestamp
+            {
+                "query": "SELECT 1",
+                "status": "success",
+                "timestamp": 1704067200,
+            },  # Unix timestamp
             {"query": "SELECT 2", "status": "success", "timestamp": 1704153600},
             {"query": "INVALID", "status": "failed", "timestamp": 1704240000},
         ]
@@ -216,26 +221,28 @@ class TestSnowflakeConnection:
         assert connection.test_connection() is False
 
         # Mock successful connection and query result
-        with patch.object(connection, 'execute_query') as mock_execute:
+        with patch.object(connection, "execute_query") as mock_execute:
             # Set up successful result
             mock_result = QueryResult(
                 data=[{"TEST": 1}],
                 columns=[{"name": "TEST"}],
                 row_count=1,
-                execution_time=0.1
+                execution_time=0.1,
             )
             mock_execute.return_value = mock_result
 
             assert connection.test_connection() is True
 
         # Test connection failure
-        with patch.object(connection, 'execute_query') as mock_execute:
+        with patch.object(connection, "execute_query") as mock_execute:
             mock_execute.side_effect = Exception("Connection error")
             assert connection.test_connection() is False
 
     def test_context_manager(self, mock_config):
         """Test using SnowflakeConnection as a context manager."""
-        with patch("server.snowflake_connection.snowflake.connector.connect") as mock_connect:
+        with patch(
+            "server.snowflake_connection.snowflake.connector.connect"
+        ) as mock_connect:
             mock_conn = MagicMock()
             mock_connect.return_value = mock_conn
 

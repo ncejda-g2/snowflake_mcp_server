@@ -15,9 +15,7 @@ class TestConfig:
     def test_config_creation_with_required_fields(self):
         """Test creating a config with all required fields."""
         config = Config(
-            account="test123.us-east-1",
-            username="testuser",
-            warehouse="TEST_WH"
+            account="test123.us-east-1", username="testuser", warehouse="TEST_WH"
         )
 
         assert config.account == "test123.us-east-1"
@@ -37,7 +35,7 @@ class TestConfig:
             transport="http",
             cache_ttl_days=10,
             max_query_rows=500,
-            debug=True
+            debug=True,
         )
 
         assert config.account == "test123.us-east-1"
@@ -54,9 +52,7 @@ class TestConfig:
     def test_config_default_values(self):
         """Test that default values are set correctly."""
         config = Config(
-            account="test123.us-east-1",
-            username="testuser",
-            warehouse="TEST_WH"
+            account="test123.us-east-1", username="testuser", warehouse="TEST_WH"
         )
 
         assert config.role == "ML_DEVELOPER"
@@ -77,11 +73,7 @@ class TestConfig:
     def test_account_validator_invalid_characters(self):
         """Test account validator rejects invalid characters."""
         with pytest.raises(ValidationError) as exc_info:
-            Config(
-                account="test@123#invalid",
-                username="testuser",
-                warehouse="TEST_WH"
-            )
+            Config(account="test@123#invalid", username="testuser", warehouse="TEST_WH")
 
         assert "Invalid Snowflake account format" in str(exc_info.value)
 
@@ -93,15 +85,11 @@ class TestConfig:
             "test.123",
             "test_123",
             "xy12345.us-east-1",
-            "abc-def.ghi_123"
+            "abc-def.ghi_123",
         ]
 
         for account in valid_accounts:
-            config = Config(
-                account=account,
-                username="testuser",
-                warehouse="TEST_WH"
-            )
+            config = Config(account=account, username="testuser", warehouse="TEST_WH")
             assert config.account == account
 
     def test_transport_validator_invalid(self):
@@ -111,7 +99,7 @@ class TestConfig:
                 account="test123",
                 username="testuser",
                 warehouse="TEST_WH",
-                transport="websocket"
+                transport="websocket",
             )
 
         assert "Transport must be 'stdio' or 'http'" in str(exc_info.value)
@@ -123,7 +111,7 @@ class TestConfig:
                 account="test123",
                 username="testuser",
                 warehouse="TEST_WH",
-                transport=transport
+                transport=transport,
             )
             assert config.transport == transport
 
@@ -132,10 +120,7 @@ class TestConfig:
         # Valid ports
         for port in [1, 80, 8080, 65535]:
             config = Config(
-                account="test123",
-                username="testuser",
-                warehouse="TEST_WH",
-                port=port
+                account="test123", username="testuser", warehouse="TEST_WH", port=port
             )
             assert config.port == port
 
@@ -146,17 +131,13 @@ class TestConfig:
                     account="test123",
                     username="testuser",
                     warehouse="TEST_WH",
-                    port=port
+                    port=port,
                 )
 
     @patch.dict(os.environ, {}, clear=True)
     def test_is_running_in_docker(self):
         """Test Docker detection."""
-        config = Config(
-            account="test123",
-            username="testuser",
-            warehouse="TEST_WH"
-        )
+        config = Config(account="test123", username="testuser", warehouse="TEST_WH")
 
         # Not in Docker by default
         with patch("os.path.exists", return_value=False):
@@ -167,18 +148,16 @@ class TestConfig:
             assert config.is_running_in_docker is True
 
         # Detect via environment variable
-        with patch("os.path.exists", return_value=False), \
-             patch.dict(os.environ, {"DOCKER_CONTAINER": "true"}):
+        with (
+            patch("os.path.exists", return_value=False),
+            patch.dict(os.environ, {"DOCKER_CONTAINER": "true"}),
+        ):
             assert config.is_running_in_docker is True
 
     @patch.dict(os.environ, {}, clear=True)
     def test_is_running_in_docker_or_k8s(self):
         """Test Docker/Kubernetes detection."""
-        config = Config(
-            account="test123",
-            username="testuser",
-            warehouse="TEST_WH"
-        )
+        config = Config(account="test123", username="testuser", warehouse="TEST_WH")
 
         # Not in Docker/K8s by default
         with patch("os.path.exists", return_value=False):
@@ -189,15 +168,21 @@ class TestConfig:
             assert config.is_running_in_docker_or_k8s is True
 
         # Detect via Kubernetes
-        with patch("os.path.exists", return_value=False), \
-             patch.dict(os.environ, {"KUBERNETES_SERVICE_HOST": "10.0.0.1"}):
+        with (
+            patch("os.path.exists", return_value=False),
+            patch.dict(os.environ, {"KUBERNETES_SERVICE_HOST": "10.0.0.1"}),
+        ):
             assert config.is_running_in_docker_or_k8s is True
 
-    @patch.dict(os.environ, {
-        "SNOWFLAKE_ACCOUNT": "test123.us-east-1",
-        "SNOWFLAKE_USERNAME": "testuser",
-        "SNOWFLAKE_WAREHOUSE": "TEST_WH"
-    }, clear=True)
+    @patch.dict(
+        os.environ,
+        {
+            "SNOWFLAKE_ACCOUNT": "test123.us-east-1",
+            "SNOWFLAKE_USERNAME": "testuser",
+            "SNOWFLAKE_WAREHOUSE": "TEST_WH",
+        },
+        clear=True,
+    )
     def test_from_env_with_required_vars(self):
         """Test creating config from environment with required variables."""
         config = Config.from_env()
@@ -207,18 +192,22 @@ class TestConfig:
         assert config.warehouse == "TEST_WH"
         assert config.role == "ML_DEVELOPER"  # default
 
-    @patch.dict(os.environ, {
-        "SNOWFLAKE_ACCOUNT": "test123.us-east-1",
-        "SNOWFLAKE_USERNAME": "testuser",
-        "SNOWFLAKE_WAREHOUSE": "TEST_WH",
-        "SNOWFLAKE_ROLE": "CUSTOM_ROLE",
-        "MCP_HOST": "localhost",
-        "MCP_PORT": "9000",
-        "MCP_TRANSPORT": "http",
-        "CACHE_TTL_DAYS": "10",
-        "MAX_QUERY_ROWS": "500",
-        "DEBUG": "true"
-    }, clear=True)
+    @patch.dict(
+        os.environ,
+        {
+            "SNOWFLAKE_ACCOUNT": "test123.us-east-1",
+            "SNOWFLAKE_USERNAME": "testuser",
+            "SNOWFLAKE_WAREHOUSE": "TEST_WH",
+            "SNOWFLAKE_ROLE": "CUSTOM_ROLE",
+            "MCP_HOST": "localhost",
+            "MCP_PORT": "9000",
+            "MCP_TRANSPORT": "http",
+            "CACHE_TTL_DAYS": "10",
+            "MAX_QUERY_ROWS": "500",
+            "DEBUG": "true",
+        },
+        clear=True,
+    )
     def test_from_env_with_all_vars(self):
         """Test creating config from environment with all variables."""
         config = Config.from_env()
@@ -246,11 +235,15 @@ class TestConfig:
         assert "SNOWFLAKE_USERNAME" in error_msg
         assert "SNOWFLAKE_WAREHOUSE" in error_msg
 
-    @patch.dict(os.environ, {
-        "SNOWFLAKE_ACCOUNT": "test123",
-        "SNOWFLAKE_USERNAME": "testuser"
-        # Missing SNOWFLAKE_WAREHOUSE
-    }, clear=True)
+    @patch.dict(
+        os.environ,
+        {
+            "SNOWFLAKE_ACCOUNT": "test123",
+            "SNOWFLAKE_USERNAME": "testuser",
+            # Missing SNOWFLAKE_WAREHOUSE
+        },
+        clear=True,
+    )
     def test_from_env_partial_missing_vars(self):
         """Test from_env with partial missing variables."""
         with pytest.raises(ValueError) as exc_info:
@@ -261,12 +254,16 @@ class TestConfig:
         assert "SNOWFLAKE_WAREHOUSE" in error_msg
         assert "SNOWFLAKE_ACCOUNT" not in error_msg  # This one is present
 
-    @patch.dict(os.environ, {
-        "SNOWFLAKE_ACCOUNT": "test123.us-east-1",
-        "SNOWFLAKE_USERNAME": "testuser",
-        "SNOWFLAKE_WAREHOUSE": "TEST_WH",
-        "DEBUG": "yes"
-    }, clear=True)
+    @patch.dict(
+        os.environ,
+        {
+            "SNOWFLAKE_ACCOUNT": "test123.us-east-1",
+            "SNOWFLAKE_USERNAME": "testuser",
+            "SNOWFLAKE_WAREHOUSE": "TEST_WH",
+            "DEBUG": "yes",
+        },
+        clear=True,
+    )
     def test_from_env_debug_parsing(self):
         """Test debug flag parsing from environment."""
         config = Config.from_env()

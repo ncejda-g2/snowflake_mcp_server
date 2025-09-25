@@ -1,9 +1,8 @@
 """Tests for server/log_utils.py module."""
 
 import logging
-import sys
 import os
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -81,9 +80,7 @@ def test_setup_logging_without_config(mock_config_class):
 
 def test_setup_logging_adjusts_third_party_loggers(mock_config):
     """Test that third-party loggers are adjusted in non-debug mode."""
-    with patch("logging.basicConfig"), \
-         patch("logging.getLogger") as mock_get_logger:
-
+    with patch("logging.basicConfig"), patch("logging.getLogger") as mock_get_logger:
         # Create mock loggers
         main_logger = Mock(spec=logging.Logger)
         snowflake_logger = Mock(spec=logging.Logger)
@@ -91,16 +88,15 @@ def test_setup_logging_adjusts_third_party_loggers(mock_config):
         boto_logger = Mock(spec=logging.Logger)
 
         # Configure getLogger to return appropriate mocks
+        logger_map = {
+            "snowflake_mcp_server": main_logger,
+            "snowflake.connector": snowflake_logger,
+            "urllib3": urllib_logger,
+            "botocore": boto_logger,
+        }
+
         def get_logger_side_effect(name):
-            if name == "snowflake_mcp_server":
-                return main_logger
-            elif name == "snowflake.connector":
-                return snowflake_logger
-            elif name == "urllib3":
-                return urllib_logger
-            elif name == "botocore":
-                return boto_logger
-            return Mock(spec=logging.Logger)
+            return logger_map.get(name, Mock(spec=logging.Logger))
 
         mock_get_logger.side_effect = get_logger_side_effect
 
@@ -117,9 +113,7 @@ def test_setup_logging_adjusts_third_party_loggers(mock_config):
 
 def test_setup_logging_does_not_adjust_loggers_in_debug(mock_config_debug):
     """Test that third-party loggers are not adjusted in debug mode."""
-    with patch("logging.basicConfig"), \
-         patch("logging.getLogger") as mock_get_logger:
-
+    with patch("logging.basicConfig"), patch("logging.getLogger") as mock_get_logger:
         # Create mock loggers
         main_logger = Mock(spec=logging.Logger)
         snowflake_logger = Mock(spec=logging.Logger)
@@ -127,16 +121,15 @@ def test_setup_logging_does_not_adjust_loggers_in_debug(mock_config_debug):
         boto_logger = Mock(spec=logging.Logger)
 
         # Configure getLogger to return appropriate mocks
+        logger_map = {
+            "snowflake_mcp_server": main_logger,
+            "snowflake.connector": snowflake_logger,
+            "urllib3": urllib_logger,
+            "botocore": boto_logger,
+        }
+
         def get_logger_side_effect(name):
-            if name == "snowflake_mcp_server":
-                return main_logger
-            elif name == "snowflake.connector":
-                return snowflake_logger
-            elif name == "urllib3":
-                return urllib_logger
-            elif name == "botocore":
-                return boto_logger
-            return Mock(spec=logging.Logger)
+            return logger_map.get(name, Mock(spec=logging.Logger))
 
         mock_get_logger.side_effect = get_logger_side_effect
 
@@ -157,5 +150,5 @@ def test_module_level_logger():
     import server.log_utils
 
     # The module should have a logger attribute
-    assert hasattr(server.log_utils, 'logger')
+    assert hasattr(server.log_utils, "logger")
     assert isinstance(server.log_utils.logger, logging.Logger)

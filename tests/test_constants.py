@@ -1,6 +1,5 @@
 """Tests for server/constants.py module."""
 
-import pytest
 from server import constants
 
 
@@ -29,17 +28,19 @@ def test_mcp_token_limits():
     assert constants.MCP_CHAR_WARNING_THRESHOLD == 80000
 
     # Verify warning threshold is 80% of limit
-    assert constants.MCP_CHAR_WARNING_THRESHOLD == int(
-        constants.MCP_CHAR_LIMIT_ESTIMATE * 0.8
+    assert (
+        int(constants.MCP_CHAR_LIMIT_ESTIMATE * 0.8)
+        == constants.MCP_CHAR_WARNING_THRESHOLD
     )
 
     # Verify types
     assert all(
-        isinstance(val, int) for val in [
+        isinstance(val, int)
+        for val in [
             constants.MCP_TOKEN_LIMIT_ESTIMATE,
             constants.APPROX_CHARS_PER_TOKEN,
             constants.MCP_CHAR_LIMIT_ESTIMATE,
-            constants.MCP_CHAR_WARNING_THRESHOLD
+            constants.MCP_CHAR_WARNING_THRESHOLD,
         ]
     )
 
