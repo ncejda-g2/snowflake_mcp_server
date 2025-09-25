@@ -235,7 +235,12 @@ async def get_table_schema_tool(
     - All query results (respects LIMIT clause if present in SQL)
     - Results are cached for CSV export if under 5GB
     - Use save_last_query_to_csv to export results
-    
+
+    Note:
+    - If you encounter token limit issues with large result sets, consider using
+      execute_big_query_to_disk instead, which streams results directly to a file
+      without returning the data in the response, or consider adding a stricter LIMIT clause.
+
     Examples:
     - execute_query("SELECT * FROM SALES_DB.PUBLIC.CUSTOMERS LIMIT 10")
     - execute_query("SELECT COUNT(*) FROM orders", database="SALES_DB", schema="PUBLIC")

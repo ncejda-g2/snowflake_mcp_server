@@ -11,7 +11,7 @@ from datetime import datetime
 from server.schema_cache import SchemaCache
 from server.snowflake_connection import SnowflakeConnection, QueryResult
 from server.tools.catalog_refresh import refresh_catalog
-from server.constants import MAX_CACHE_SIZE_BYTES
+from server.constants import MAX_CACHE_SIZE_BYTES, MCP_CHAR_WARNING_THRESHOLD
 
 
 logger = logging.getLogger(__name__)
@@ -134,7 +134,11 @@ async def execute_query(
             }
             logger.warning(f"Query results too large for caching: {estimated_size / (1024**3):.2f}GB")
             csv_available = False
-            csv_message = f"Results too large for CSV export ({estimated_size / (1024**3):.2f}GB exceeds {MAX_CACHE_SIZE_BYTES / (1024**3):.2f}GB limit)"
+            csv_message = (
+                f"Results too large for CSV export ({estimated_size / (1024**3):.2f}GB exceeds "
+                f"{MAX_CACHE_SIZE_BYTES / (1024**3):.2f}GB limit). Consider using execute_big_query_to_disk "
+                f"to stream large results directly to a file."
+            )
         else:
             # Store full results for CSV export
             last_query_cache = cache_data
@@ -147,7 +151,21 @@ async def execute_query(
         for row in result.data:
             formatted_row = {k: _format_value(v) for k, v in row.items()}
             formatted_data.append(formatted_row)
-        
+
+        # Check if response might exceed MCP token limits
+        # We check the formatted data size since that's what gets serialized
+        response_size_estimate = _estimate_size(formatted_data)
+
+        # Add warning if approaching estimated token limits (at 80% threshold)
+        token_warning = None
+        if response_size_estimate > MCP_CHAR_WARNING_THRESHOLD:
+            token_warning = (
+                f"Response size ({response_size_estimate:,} chars) is approaching typical MCP token limits. "
+                f"For larger result sets, consider using execute_big_query_to_disk to stream results directly to a file, "
+                f"or add a LIMIT clause to reduce the result set size."
+            )
+            logger.warning(f"Query response approaching token limits: {response_size_estimate:,} chars")
+
         response = {
             "status": "success",
             "data": formatted_data,
@@ -166,7 +184,11 @@ async def execute_query(
                 "query_id": result.query_id
             }
         }
-        
+
+        # Add token warning if present
+        if token_warning:
+            response["token_limit_warning"] = token_warning
+
         return response
         
     except ValueError as e:
