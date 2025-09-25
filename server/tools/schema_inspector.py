@@ -61,27 +61,24 @@ async def inspect_schemas(
 
         for database in databases:
             # Apply database filter
-            if database_pattern:
-                if database_pattern.upper() not in database.upper():
-                    continue
+            if database_pattern and database_pattern.upper() not in database.upper():
+                continue
 
             db_schemas: dict[str, Any] = {}
             schemas = cache.get_schemas(database)
 
             for schema in schemas:
                 # Apply schema filter
-                if schema_pattern:
-                    if schema_pattern.upper() not in schema.upper():
-                        continue
+                if schema_pattern and schema_pattern.upper() not in schema.upper():
+                    continue
 
                 tables = cache.get_tables_in_schema(database, schema)
                 schema_tables: list[Any] = []
 
                 for table in tables:
                     # Apply table filter
-                    if table_pattern:
-                        if table_pattern.upper() not in table.table_name.upper():
-                            continue
+                    if table_pattern and table_pattern.upper() not in table.table_name.upper():
+                        continue
 
                     # When filtering by database, just use table names (most compact)
                     if not include_columns:

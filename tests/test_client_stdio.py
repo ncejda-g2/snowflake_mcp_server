@@ -40,8 +40,9 @@ async def test_mcp_server():
     print("=" * 60)
 
     try:
-        async with stdio_client(server_params) as (read, write):
-            async with ClientSession(read, write) as session:
+        async with stdio_client(server_params) as (read, write), ClientSession(
+            read, write
+        ) as session:
                 # Initialize the session
                 print("📡 Initializing connection...")
                 await session.initialize()
@@ -85,7 +86,7 @@ async def test_mcp_server():
                                 print(f"   ... and {len(data['databases']) - 3} more")
                         else:
                             print(f"✅ Result: {content[:200]}...")
-                    except:
+                    except Exception:
                         print(f"✅ Result: {content[:200]}...")
                 except Exception as e:
                     print(f"❌ Failed: {e}")
@@ -111,7 +112,7 @@ async def test_mcp_server():
                                 print(f"   ... and {len(data['tables']) - 3} more")
                         else:
                             print(f"✅ Result: {content[:200]}...")
-                    except:
+                    except Exception:
                         print(f"✅ Result: {content[:200]}...")
                 except Exception as e:
                     print(f"❌ Failed: {e}")
@@ -135,7 +136,7 @@ async def test_mcp_server():
                                 print(f"   ... and {len(data['rows']) - 3} more")
                         else:
                             print(f"✅ Result: {content[:200]}...")
-                    except:
+                    except Exception:
                         print(f"✅ Result: {content[:200]}...")
                 except Exception as e:
                     print(f"❌ Failed: {e}")
@@ -161,7 +162,7 @@ async def test_mcp_server():
                                 "❌ Unexpected success! This should have been blocked"
                             )
                             print(f"   Result: {content}")
-                    except:
+                    except Exception:
                         print(f"❌ Unexpected result format: {content}")
                 except Exception as e:
                     print(f"✅ Correctly blocked (exception): {str(e)[:100]}...")

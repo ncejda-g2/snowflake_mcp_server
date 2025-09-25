@@ -31,8 +31,7 @@ async def refresh_catalog(
         Dictionary with refresh results and statistics
     """
     # Check if refresh is needed
-    if not force:
-        if not cache.is_expired() and not cache.is_empty():
+    if not force and not cache.is_expired() and not cache.is_empty():
             stats = cache.get_statistics()
             return {
                 "status": "cache_valid",

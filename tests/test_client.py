@@ -14,8 +14,9 @@ async def test_mcp_server():
     # Connect to the running server
     server_params = StdioServerParameters(command="python", args=["main.py"])
 
-    async with stdio_client(server_params) as (read, write):
-        async with ClientSession(read, write) as session:
+    async with stdio_client(server_params) as (read, write), ClientSession(
+        read, write
+    ) as session:
             # Initialize the session
             await session.initialize()
 

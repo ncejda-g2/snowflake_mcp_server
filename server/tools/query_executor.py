@@ -201,7 +201,7 @@ async def execute_query(
 
 
 async def validate_query_without_execution(
-    connection: SnowflakeConnection,
+    connection: SnowflakeConnection,  # noqa: ARG001
     cache: SchemaCache,
     sql: str,
     database: str | None = None,

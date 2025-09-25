@@ -13,12 +13,12 @@ load_dotenv()
 # Add the server directory to path
 sys.path.insert(0, str(Path(__file__).parent))
 
-import logging
+import logging  # noqa: E402
 
-from server.config import Config
-from server.schema_cache import SchemaCache
-from server.snowflake_connection import SnowflakeConnection
-from server.tools.catalog_refresh import refresh_catalog
+from server.config import Config  # noqa: E402
+from server.schema_cache import SchemaCache  # noqa: E402
+from server.snowflake_connection import SnowflakeConnection  # noqa: E402
+from server.tools.catalog_refresh import refresh_catalog  # noqa: E402
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
