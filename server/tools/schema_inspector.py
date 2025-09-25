@@ -1,7 +1,7 @@
 """Schema inspection tool for exploring Snowflake database structures."""
 
 import logging
-from typing import Dict, List, Optional
+from typing import Any
 
 from server.schema_cache import SchemaCache
 from server.snowflake_connection import SnowflakeConnection
@@ -13,10 +13,10 @@ logger = logging.getLogger(__name__)
 async def inspect_schemas(
     connection: SnowflakeConnection,
     cache: SchemaCache,
-    database_pattern: Optional[str] = None,
-    schema_pattern: Optional[str] = None,
-    table_pattern: Optional[str] = None,
-) -> Dict:
+    database_pattern: str | None = None,
+    schema_pattern: str | None = None,
+    table_pattern: str | None = None,
+) -> dict[str, Any]:
     """
     List available databases, schemas, and tables from cache.
 
@@ -49,7 +49,7 @@ async def inspect_schemas(
 
     try:
         # Build hierarchical structure
-        hierarchy = {}
+        hierarchy: dict[str, Any] = {}
         total_tables = 0
         total_columns = 0
 
@@ -61,27 +61,27 @@ async def inspect_schemas(
 
         for database in databases:
             # Apply database filter
-            if database_pattern:
-                if database_pattern.upper() not in database.upper():
-                    continue
+            if database_pattern and database_pattern.upper() not in database.upper():
+                continue
 
-            db_schemas = {}
+            db_schemas: dict[str, Any] = {}
             schemas = cache.get_schemas(database)
 
             for schema in schemas:
                 # Apply schema filter
-                if schema_pattern:
-                    if schema_pattern.upper() not in schema.upper():
-                        continue
+                if schema_pattern and schema_pattern.upper() not in schema.upper():
+                    continue
 
                 tables = cache.get_tables_in_schema(database, schema)
-                schema_tables = []
+                schema_tables: list[Any] = []
 
                 for table in tables:
                     # Apply table filter
-                    if table_pattern:
-                        if table_pattern.upper() not in table.table_name.upper():
-                            continue
+                    if (
+                        table_pattern
+                        and table_pattern.upper() not in table.table_name.upper()
+                    ):
+                        continue
 
                     # When filtering by database, just use table names (most compact)
                     if not include_columns:
@@ -90,22 +90,24 @@ async def inspect_schemas(
                         # Include full details when not filtering by database
                         table_info = {
                             "name": table.table_name,
-                            "columns": len(table.columns)
+                            "columns": len(table.columns),
                         }
                         total_columns += len(table.columns)
-                        
+
                         # Only include comment if it exists
                         if table.comment:
                             table_info["comment"] = table.comment
-                        
+
                         schema_tables.append(table_info)
-                    
+
                     total_tables += 1
 
                 if schema_tables:
                     # When filtering by database, use most compact format
                     if not include_columns:
-                        db_schemas[schema] = schema_tables  # Just the list of table names
+                        db_schemas[schema] = (
+                            schema_tables  # Just the list of table names
+                        )
                     else:
                         db_schemas[schema] = {
                             "tables": schema_tables,
@@ -120,7 +122,9 @@ async def inspect_schemas(
                     hierarchy[database] = {
                         "schemas": db_schemas,
                         "schema_count": len(db_schemas),
-                        "total_tables": sum(s["table_count"] for s in db_schemas.values())
+                        "total_tables": sum(
+                            s["table_count"] for s in db_schemas.values()
+                        ),
                     }
 
         # Format results
@@ -140,15 +144,15 @@ async def inspect_schemas(
             return {
                 "status": "success",
                 "data": hierarchy,
-                "total_tables": total_tables
+                "total_tables": total_tables,
             }
-        
+
         # Full response when not filtering
         summary = {
             "databases": len(hierarchy),
             "total_schemas": sum(db["schema_count"] for db in hierarchy.values()),
             "total_tables": total_tables,
-            "total_columns": total_columns
+            "total_columns": total_columns,
         }
 
         return {
@@ -169,7 +173,7 @@ async def inspect_schemas(
 
 async def search_tables(
     connection: SnowflakeConnection, cache: SchemaCache, search_term: str
-) -> Dict:
+) -> dict[str, Any]:
     """
     Search for tables across all databases.
 

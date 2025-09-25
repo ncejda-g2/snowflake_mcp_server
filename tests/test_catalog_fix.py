@@ -5,6 +5,8 @@ import asyncio
 import os
 import sys
 from pathlib import Path
+
+import pytest
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -13,26 +15,34 @@ load_dotenv()
 # Add the server directory to path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from server.config import Config
-from server.snowflake_connection import SnowflakeConnection
-from server.schema_cache import SchemaCache
-from server.tools.catalog_refresh import refresh_catalog
+import logging  # noqa: E402
 
-import logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+from server.config import Config  # noqa: E402
+from server.schema_cache import SchemaCache  # noqa: E402
+from server.snowflake_connection import SnowflakeConnection  # noqa: E402
+from server.tools.catalog_refresh import refresh_catalog  # noqa: E402
 
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+
+
+@pytest.mark.skipif(
+    os.getenv("CI") == "true",
+    reason="Requires Snowflake connection with SSO authentication",
+)
 async def test_catalog_refresh():
     """Test the catalog refresh with our fix."""
-    
+
     # Initialize components using from_env
     config = Config.from_env()
     connection = SnowflakeConnection(config)
     cache = SchemaCache()
-    
+
     # Connect to Snowflake
     print("Connecting to Snowflake...")
     connection.connect()
-    
+
     # Test a single database first - GDC which should have 1,249 tables
     print("\nTesting GDC database specifically...")
     query = """
@@ -41,63 +51,64 @@ async def test_catalog_refresh():
     FROM GDC.INFORMATION_SCHEMA.COLUMNS
     WHERE TABLE_SCHEMA NOT IN ('INFORMATION_SCHEMA')
     """
-    
-    result = connection.execute_query(query, max_rows=None)
+
+    result = connection.execute_query(query)
     if result.data:
         print(f"GDC actual counts: {result.data[0]}")
-    
+
     # Now test the catalog refresh
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("Running catalog refresh with force=True...")
-    print("="*60)
-    
+    print("=" * 60)
+
     result = await refresh_catalog(connection, cache, force=True, resume=False)
-    
+
     print(f"\nRefresh result: {result['status']}")
     print(f"Tables found: {result.get('tables_found', 0)}")
     print(f"Databases scanned: {result.get('databases_scanned', 0)}")
-    
-    if result.get('statistics'):
-        stats = result['statistics']
-        print(f"\nDatabase table counts:")
-        for db, info in stats.get('databases', {}).items():
+
+    if result.get("statistics"):
+        stats = result["statistics"]
+        print("\nDatabase table counts:")
+        for db, info in stats.get("databases", {}).items():
             print(f"  {db}: {info['table_count']} tables")
-    
+
     # Disconnect
     connection.disconnect()
-    
+
     return result
+
 
 if __name__ == "__main__":
     result = asyncio.run(test_catalog_refresh())
-    
+
     # Check if we got the expected number of tables
     expected_counts = {
-        'GDC': 1249,
-        'GDC_TESTING': 1184,
-        'ML_DEV': 113,
-        'ML_PROD': 61,
-        'GONG_DB': 22,
-        'AGGREGATES_DB': 5,
-        'AGGREGATES_DB_TESTING': 4,
-        'AI_DRIVEN': 4
+        "GDC": 1249,
+        "GDC_TESTING": 1184,
+        "ML_DEV": 113,
+        "ML_PROD": 61,
+        "GONG_DB": 22,
+        "AGGREGATES_DB": 5,
+        "AGGREGATES_DB_TESTING": 4,
+        "AI_DRIVEN": 4,
     }
-    
-    print("\n" + "="*60)
+
+    print("\n" + "=" * 60)
     print("Validation Results:")
-    print("="*60)
-    
-    stats = result.get('statistics', {})
-    databases = stats.get('databases', {})
-    
+    print("=" * 60)
+
+    stats = result.get("statistics", {})
+    databases = stats.get("databases", {})
+
     all_match = True
     for db, expected in expected_counts.items():
-        actual = databases.get(db, {}).get('table_count', 0)
+        actual = databases.get(db, {}).get("table_count", 0)
         match = "✓" if actual == expected else "✗"
         print(f"{match} {db}: Expected {expected}, Got {actual}")
         if actual != expected:
             all_match = False
-    
+
     if all_match:
         print("\n✅ SUCCESS: All table counts match!")
     else:

@@ -85,7 +85,7 @@ Choose one of the following installation methods:
    cd snowflake_mcp_server
    uv sync
    ```
-   
+
    If the dependencies seem outdated, update them:
    ```bash
    uv lock --upgrade
@@ -158,9 +158,9 @@ Replace the placeholders:
 
    <details>
    <summary><b>For Python venv installation</b></summary>
-   
+
    <br>
-   
+
    ```json
    {
      "mcpServers": {
@@ -176,14 +176,14 @@ Replace the placeholders:
      }
    }
    ```
-   
+
    </details>
 
    <details>
    <summary><b>For uv installation</b></summary>
-   
+
    <br>
-   
+
    ```json
    {
      "mcpServers": {
@@ -199,14 +199,14 @@ Replace the placeholders:
      }
    }
    ```
-   
+
    </details>
 
    <details>
    <summary><b>For Conda installation</b></summary>
-   
+
    <br>
-   
+
    ```json
    {
      "mcpServers": {
@@ -222,7 +222,7 @@ Replace the placeholders:
      }
    }
    ```
-   
+
    </details>
 
 3. **Restart Claude Desktop** to load the new configuration
@@ -309,7 +309,7 @@ For all platforms, update these values:
   - **Account Identifier format**: `GJA24605-DATAWAREHOUSE` (organization-account format)
   - **Account Locator with Region**: `FNA20204.us-east-1` (legacy format)
   - Find yours at: Snowflake UI → bottom-left corner → hover over account name
-  
+
 - **`SNOWFLAKE_USERNAME`**: Your Snowflake username (usually your email)
 
 - **`SNOWFLAKE_WAREHOUSE`**: The warehouse to use for queries (e.g., `ML_DEV_WH`)
@@ -437,7 +437,7 @@ save_last_query_to_csv("~/Downloads/results.csv")
 - Check the config file is valid JSON (use a JSON validator)
 - Ensure your AI platform is fully closed and restarted
 - Check logs for errors:
-  - Claude Desktop: 
+  - Claude Desktop:
     - macOS: `~/Library/Logs/Claude/`
     - Windows: `%APPDATA%\Claude\logs\`
   - Claude Code: Check console output or use `claude mcp list` to verify
