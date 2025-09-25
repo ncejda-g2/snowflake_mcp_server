@@ -32,12 +32,12 @@ async def refresh_catalog(
     """
     # Check if refresh is needed
     if not force and not cache.is_expired() and not cache.is_empty():
-            stats = cache.get_statistics()
-            return {
-                "status": "cache_valid",
-                "message": "Cache is still valid and not expired",
-                "statistics": stats,
-            }
+        stats = cache.get_statistics()
+        return {
+            "status": "cache_valid",
+            "message": "Cache is still valid and not expired",
+            "statistics": stats,
+        }
 
     # Check if refresh is already in progress
     if cache.refresh_in_progress:

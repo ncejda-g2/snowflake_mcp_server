@@ -77,7 +77,10 @@ async def inspect_schemas(
 
                 for table in tables:
                     # Apply table filter
-                    if table_pattern and table_pattern.upper() not in table.table_name.upper():
+                    if (
+                        table_pattern
+                        and table_pattern.upper() not in table.table_name.upper()
+                    ):
                         continue
 
                     # When filtering by database, just use table names (most compact)
