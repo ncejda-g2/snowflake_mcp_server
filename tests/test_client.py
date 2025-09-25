@@ -3,11 +3,17 @@
 
 import asyncio
 import json
+import os
 
+import pytest
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
 
+@pytest.mark.skipif(
+    os.getenv("CI") == "true",
+    reason="Requires environment variables for Snowflake connection"
+)
 async def test_mcp_server():
     """Test the MCP server with basic operations"""
 

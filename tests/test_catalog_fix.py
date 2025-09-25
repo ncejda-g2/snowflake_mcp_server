@@ -2,9 +2,11 @@
 """Test script to verify the catalog refresh fix."""
 
 import asyncio
+import os
 import sys
 from pathlib import Path
 
+import pytest
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -25,6 +27,10 @@ logging.basicConfig(
 )
 
 
+@pytest.mark.skipif(
+    os.getenv("CI") == "true",
+    reason="Requires Snowflake connection with SSO authentication"
+)
 async def test_catalog_refresh():
     """Test the catalog refresh with our fix."""
 
@@ -46,7 +52,7 @@ async def test_catalog_refresh():
     WHERE TABLE_SCHEMA NOT IN ('INFORMATION_SCHEMA')
     """
 
-    result = connection.execute_query(query, max_rows=None)
+    result = connection.execute_query(query)
     if result.data:
         print(f"GDC actual counts: {result.data[0]}")
 
