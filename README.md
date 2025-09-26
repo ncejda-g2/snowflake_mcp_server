@@ -55,9 +55,10 @@ Snowflake MCP Server bridges the gap between your Snowflake data warehouse and A
 
 - 🔒 **Strict Read-Only Access**: Multiple layers of protection against write operations
 - 🔑 **External Browser Authentication**: Uses Snowflake's secure browser-based SSO
-- 💾 **Smart Caching**: 5-day schema cache for fast metadata access
+- 💾 **Smart Caching**: 5-day schema cache for fast metadata access, reducing generic Snowflake schema queries and credit usage
 - 📄 **CSV Export**: Export query results directly to CSV files
 - 🛡️ **Query Validation**: Comprehensive SQL validation before execution
+- 🎯 **Responsible Token Management**: Lightweight outputs to minimize token usage
 
 ## 🚀 Quick Start
 
