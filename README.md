@@ -1,6 +1,6 @@
 <div align="center">
   <br />
-  <img src="assets/logo.png" alt="Snowflake MCP" width="400" />
+  <img src="assets/logo.png" alt="Snowflake MCP" width="150" />
   <br />
   <br />
 
