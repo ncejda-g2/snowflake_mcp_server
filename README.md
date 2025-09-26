@@ -35,9 +35,12 @@
 
 ---
 
-## 🎯 What is Snowflake MCP?
+## What is Snowflake MCP?
 
 Snowflake MCP Server bridges the gap between your Snowflake data warehouse and AI assistants like Claude. It provides a secure, **read-only** interface that lets AI help you explore schemas, write queries, and analyze data—all while maintaining enterprise-grade security through SSO authentication.
+
+<details>
+<summary><b>Demo</b></summary>
 
 <div align="center">
   <br />
@@ -45,6 +48,8 @@ Snowflake MCP Server bridges the gap between your Snowflake data warehouse and A
   <br />
   <br />
 </div>
+
+</details>
 
 ## Features
 
