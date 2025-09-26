@@ -1,6 +1,6 @@
 # Snowflake MCP Server
 
-![GitHub release](https://img.shields.io/github/v/release/ncejda-g2/snowflake_mcp_server?color=blue)
+[![GitHub release](https://img.shields.io/github/v/release/ncejda-g2/snowflake_mcp_server)](https://github.com/ncejda-g2/snowflake_mcp_server/releases)
 [![Changelog](https://img.shields.io/badge/changelog-Latest%20Changes-blue.svg)](./CHANGELOG.md)
 [![MCP](https://img.shields.io/badge/MCP-Model%20Context%20Protocol-green.svg)](https://modelcontextprotocol.io)
 
