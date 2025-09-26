@@ -41,7 +41,7 @@ Snowflake MCP Server bridges the gap between your Snowflake data warehouse and A
 
 <div align="center">
   <br />
-  <img src="assets/demo.gif" alt="Demo" width="600" />
+  <img src="assets/demo.gif" alt="Demo" width="800" />
   <br />
   <br />
 </div>
