@@ -35,11 +35,16 @@ cache: SchemaCache | None = None
 
 
 # Initialize resources on first use
-def initialize_resources():
-    """Initialize connection and cache if not already done."""
+def initialize_resources(require_connection: bool = True):
+    """Initialize connection and cache if not already done.
+
+    Args:
+        require_connection: If True, initializes the Snowflake connection.
+                          If False, only initializes the cache.
+    """
     global connection, cache
 
-    if connection is None:
+    if require_connection and connection is None:
         logger.info("Initializing Snowflake connection...")
         connection = SnowflakeConnection(config)
         connection.connect()
@@ -86,11 +91,32 @@ async def refresh_catalog_tool(
 ) -> dict[str, Any]:
     """Refresh the schema catalog cache."""
     try:
-        initialize_resources()
+        # First, initialize only the cache to check if refresh is needed
+        initialize_resources(require_connection=False)
     except Exception as e:
-        return {"status": "error", "message": f"Failed to initialize: {str(e)}"}
+        return {"status": "error", "message": f"Failed to initialize cache: {str(e)}"}
 
-    assert connection is not None and cache is not None
+    if cache is None:
+        raise RuntimeError("Cache initialization failed")
+
+    # Check if cache is valid before connecting to Snowflake
+    if not force and not cache.is_expired() and not cache.is_empty():
+        stats = cache.get_statistics()
+        return {
+            "status": "cache_valid",
+            "message": "Cache is still valid and not expired",
+            "statistics": stats,
+        }
+
+    # Only connect to Snowflake if we actually need to refresh
+    try:
+        initialize_resources(require_connection=True)
+    except Exception as e:
+        return {"status": "error", "message": f"Failed to connect to Snowflake: {str(e)}"}
+
+    if connection is None:
+        raise RuntimeError("Connection initialization failed")
+
     return await catalog_refresh.refresh_catalog(
         connection, cache, force=force, resume=resume
     )
@@ -129,7 +155,8 @@ async def inspect_schemas_tool(
     except Exception as e:
         return {"status": "error", "message": f"Failed to initialize: {str(e)}"}
 
-    assert connection is not None and cache is not None
+    if connection is None or cache is None:
+        raise RuntimeError("Connection or cache initialization failed")
     return await schema_inspector.inspect_schemas(
         connection,
         cache,
@@ -162,7 +189,8 @@ async def search_tables_tool(search_term: str) -> dict[str, Any]:
     except Exception as e:
         return {"status": "error", "message": f"Failed to initialize: {str(e)}"}
 
-    assert connection is not None and cache is not None
+    if connection is None or cache is None:
+        raise RuntimeError("Connection or cache initialization failed")
     return await schema_inspector.search_tables(connection, cache, search_term)
 
 
@@ -199,7 +227,8 @@ async def get_table_schema_tool(
     except Exception as e:
         return {"status": "error", "message": f"Failed to initialize: {str(e)}"}
 
-    assert connection is not None and cache is not None
+    if connection is None or cache is None:
+        raise RuntimeError("Connection or cache initialization failed")
     return await table_inspector.get_table_schema(
         connection,
         cache,
@@ -252,7 +281,8 @@ async def execute_query_tool(
     except Exception as e:
         return {"status": "error", "message": f"Failed to initialize: {str(e)}"}
 
-    assert connection is not None and cache is not None
+    if connection is None or cache is None:
+        raise RuntimeError("Connection or cache initialization failed")
     return await query_executor.execute_query(
         connection, cache, sql=sql, database=database, schema=schema
     )
@@ -300,7 +330,8 @@ async def validate_query_without_execution_tool(
     except Exception as e:
         return {"status": "error", "message": f"Failed to initialize: {str(e)}"}
 
-    assert connection is not None and cache is not None
+    if connection is None or cache is None:
+        raise RuntimeError("Connection or cache initialization failed")
     return await query_executor.validate_query_without_execution(
         connection, cache, sql=sql, database=database, schema=schema
     )
@@ -332,7 +363,8 @@ async def get_query_history_tool(
     except Exception as e:
         return {"status": "error", "message": f"Failed to initialize: {str(e)}"}
 
-    assert connection is not None
+    if connection is None:
+        raise RuntimeError("Connection initialization failed")
     return await query_executor.get_query_history(
         connection, limit=limit, only_successful=only_successful
     )
@@ -356,7 +388,8 @@ async def get_query_history_tool(
     - Optionally exports the SQL query to a .sql file (enabled by default)
 
     Parameters:
-    - file_path: The absolute or relative path where the CSV file should be saved
+    - file_path: Path where the CSV file should be saved (absolute paths recommended)
+                 Note: Relative paths are resolved from the MCP server's working directory
     - export_sql: Whether to also export the SQL query to a .sql file (default: true)
 
     Requirements:
@@ -399,7 +432,8 @@ async def save_last_query_to_csv_tool(
 
     Parameters:
     - sql: The SQL query to execute (must be read-only)
-    - file_path: The absolute or relative path where the CSV file should be saved
+    - file_path: Path where the CSV file should be saved (absolute paths recommended)
+                 Note: Relative paths are resolved from the MCP server's working directory
     - database: Optional database context
     - schema: Optional schema context
     - timeout_seconds: Query timeout in seconds (default: 300, max: 3600)
@@ -432,7 +466,8 @@ async def execute_big_query_to_disk_tool(
     except Exception as e:
         return {"status": "error", "message": f"Failed to initialize: {str(e)}"}
 
-    assert connection is not None and cache is not None
+    if connection is None or cache is None:
+        raise RuntimeError("Connection or cache initialization failed")
     return await execute_big_query_to_disk.execute_big_query_to_disk(
         connection,
         cache,
