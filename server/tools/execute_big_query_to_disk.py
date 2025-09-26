@@ -58,8 +58,8 @@ def _write_sql_file(sql: str, csv_path: str) -> dict[str, Any]:
 
         return {
             "status": "success",
-            "sql_file_path": sql_path,
-            "message": f"SQL query exported to {sql_path}",
+            "sql_file_path": os.path.abspath(sql_path),  # Always return absolute path
+            "message": f"SQL query exported to {os.path.abspath(sql_path)}",
         }
 
     except Exception as e:
@@ -146,7 +146,10 @@ async def execute_big_query_to_disk(
         logger.warning("Schema cache is expired, consider refreshing")
 
     # Expand the path if it contains ~ or environment variables
+    # Convert relative paths to absolute paths based on current working directory
     expanded_path = os.path.expanduser(os.path.expandvars(file_path))
+    if not os.path.isabs(expanded_path):
+        expanded_path = os.path.abspath(expanded_path)
 
     # Derive SQL file path
     if expanded_path.lower().endswith(".csv"):
@@ -158,13 +161,13 @@ async def execute_big_query_to_disk(
     if os.path.exists(expanded_path):
         return {
             "status": "error",
-            "message": f"CSV file already exists: {expanded_path}. Please use a different filename.",
+            "message": f"CSV file already exists: {os.path.abspath(expanded_path)}. Please use a different filename.",
         }
 
     if os.path.exists(sql_file_path):
         return {
             "status": "error",
-            "message": f"SQL file already exists: {sql_file_path}. Please use a different filename.",
+            "message": f"SQL file already exists: {os.path.abspath(sql_file_path)}. Please use a different filename.",
         }
 
     # Create directory if it doesn't exist
@@ -188,7 +191,7 @@ async def execute_big_query_to_disk(
         # Use context manager for CSV file
         with open(expanded_path, "w", newline="", encoding="utf-8") as csvfile:
             logger.info(
-                f"Executing query with {timeout_seconds}s timeout and streaming to {expanded_path}"
+                f"Executing query with {timeout_seconds}s timeout and streaming to {os.path.abspath(expanded_path)}"
             )
 
             # Set timeout for this query
@@ -267,7 +270,7 @@ async def execute_big_query_to_disk(
         response = {
             "status": "success",
             "message": f"Successfully executed query and exported {row_count:,} rows to CSV",
-            "file_path": expanded_path,
+            "file_path": os.path.abspath(expanded_path),  # Always return absolute path
             "row_count": row_count,
             "column_count": len(column_names) if column_names else 0,
             "file_size_mb": round(file_size_mb, 2),
@@ -284,7 +287,7 @@ async def execute_big_query_to_disk(
                 )
 
         logger.info(
-            f"Completed: Exported {row_count:,} rows to {expanded_path} ({file_size_mb:.2f}MB) in {execution_time:.2f}s"
+            f"Completed: Exported {row_count:,} rows to {os.path.abspath(expanded_path)} ({file_size_mb:.2f}MB) in {execution_time:.2f}s"
         )
 
         return response

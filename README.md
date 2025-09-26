@@ -1,5 +1,9 @@
 # Snowflake MCP Server
 
+![Version](https://img.shields.io/badge/dynamic/toml?url=https://raw.githubusercontent.com/ncejda-g2/snowflake_mcp_server/main/pyproject.toml&query=$.project.version&label=version&color=blue)
+[![Changelog](https://img.shields.io/badge/changelog-Keep%20a%20Changelog-orange.svg)](./CHANGELOG.md)
+[![MCP](https://img.shields.io/badge/MCP-Model%20Context%20Protocol-green.svg)](https://modelcontextprotocol.io)
+
 A secure, read-only Model Context Protocol (MCP) server for Snowflake data access using external browser authentication (SSO).
 
 ## Features
