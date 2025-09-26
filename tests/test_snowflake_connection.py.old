@@ -1,0 +1,335 @@
+"""Tests for server/snowflake_connection.py module."""
+
+import re
+from unittest.mock import MagicMock, Mock, patch
+
+import pytest
+
+from server.config import Config
+from server.snowflake_connection import SnowflakeConnection
+
+
+class TestSnowflakeConnection:
+    """Test SnowflakeConnection class."""
+
+    @pytest.fixture
+    def mock_config(self):
+        """Create a mock config object."""
+        config = Mock(spec=Config)
+        config.account = "test123.us-east-1"
+        config.username = "testuser"
+        config.warehouse = "TEST_WH"
+        config.role = "TEST_ROLE"
+        config.debug = False
+        return config
+
+    @pytest.fixture
+    def connection(self, mock_config):
+        """Create a SnowflakeConnection instance."""
+        with patch("server.snowflake_connection.snowflake.connector"):
+            return SnowflakeConnection(mock_config)
+
+    def test_initialization(self, mock_config):
+        """Test SnowflakeConnection initialization."""
+        with patch("server.snowflake_connection.snowflake.connector"):
+            conn = SnowflakeConnection(mock_config)
+
+            assert conn.config == mock_config
+            assert conn.connection is None
+            assert conn.query_history == []
+            assert conn._last_query_result is None
+
+    @patch("server.snowflake_connection.snowflake.connector.connect")
+    def test_connect_success(self, mock_connect, connection):
+        """Test successful connection to Snowflake."""
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        mock_connect.return_value = mock_conn
+
+        connection.connect()
+
+        mock_connect.assert_called_once()
+        call_args = mock_connect.call_args[1]
+        assert call_args["account"] == "test123.us-east-1"
+        assert call_args["user"] == "testuser"
+        assert call_args["warehouse"] == "TEST_WH"
+        assert call_args["role"] == "TEST_ROLE"
+        assert call_args["authenticator"] == "externalbrowser"
+
+        assert connection.connection == mock_conn
+
+    @patch("server.snowflake_connection.snowflake.connector.connect")
+    def test_connect_validates_read_only(self, mock_connect, connection):
+        """Test that connect validates read-only access."""
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        mock_connect.return_value = mock_conn
+
+        with patch.object(connection, "_validate_read_only_connection") as mock_validate:
+            connection.connect()
+            mock_validate.assert_called_once()
+
+    def test_disconnect(self, connection):
+        """Test disconnecting from Snowflake."""
+        mock_conn = MagicMock()
+        connection.connection = mock_conn
+
+        connection.disconnect()
+
+        mock_conn.close.assert_called_once()
+        assert connection.connection is None
+
+    def test_disconnect_no_connection(self, connection):
+        """Test disconnecting when not connected."""
+        connection.disconnect()  # Should not raise
+
+    def test_ensure_connected_when_not_connected(self, connection):
+        """Test ensure_connected creates connection when needed."""
+        with patch.object(connection, "connect") as mock_connect:
+            connection.ensure_connected()
+            mock_connect.assert_called_once()
+
+    def test_ensure_connected_when_already_connected(self, connection):
+        """Test ensure_connected doesn't reconnect if already connected."""
+        connection.connection = MagicMock()
+        with patch.object(connection, "connect") as mock_connect:
+            connection.ensure_connected()
+            mock_connect.assert_not_called()
+
+    def test_validate_query_select(self, connection):
+        """Test validate_query accepts SELECT statements."""
+        queries = [
+            "SELECT * FROM table",
+            "SELECT col1, col2 FROM schema.table",
+            "  SELECT  *  FROM  table  ",  # With whitespace
+            "select * from table",  # Lowercase
+        ]
+
+        for query in queries:
+            result = connection.validate_query(query)
+            assert result is True
+
+    def test_validate_query_show(self, connection):
+        """Test validate_query accepts SHOW statements."""
+        queries = [
+            "SHOW TABLES",
+            "SHOW DATABASES",
+            "SHOW SCHEMAS IN DATABASE test",
+        ]
+
+        for query in queries:
+            result = connection.validate_query(query)
+            assert result is True
+
+    def test_validate_query_describe(self, connection):
+        """Test validate_query accepts DESCRIBE statements."""
+        queries = [
+            "DESCRIBE TABLE test_table",
+            "DESC test_table",
+        ]
+
+        for query in queries:
+            result = connection.validate_query(query)
+            assert result is True
+
+    def test_validate_query_with_cte(self, connection):
+        """Test validate_query accepts WITH (CTE) statements."""
+        query = """
+        WITH cte AS (
+            SELECT * FROM table1
+        )
+        SELECT * FROM cte
+        """
+        result = connection.validate_query(query)
+        assert result is True
+
+    def test_validate_query_rejects_write_operations(self, connection):
+        """Test validate_query rejects write operations."""
+        write_queries = [
+            "INSERT INTO table VALUES (1, 2)",
+            "UPDATE table SET col = 1",
+            "DELETE FROM table",
+            "CREATE TABLE test (id INT)",
+            "DROP TABLE test",
+            "ALTER TABLE test ADD COLUMN col2 VARCHAR",
+            "TRUNCATE TABLE test",
+            "MERGE INTO table",
+            "GRANT SELECT ON table TO role",
+            "REVOKE SELECT ON table FROM role",
+            "COPY INTO table FROM @stage",
+            "PUT file:///path @stage",
+            "GET @stage file:///path",
+            "REMOVE @stage",
+            "CALL procedure()",
+            "EXECUTE IMMEDIATE 'SELECT 1'",
+        ]
+
+        for query in write_queries:
+            with pytest.raises(ValueError, match="not allowed"):
+                connection.validate_query(query)
+
+    def test_validate_query_rejects_cte_with_write(self, connection):
+        """Test validate_query rejects CTEs containing write operations."""
+        query = """
+        WITH cte AS (
+            INSERT INTO table VALUES (1, 2)
+        )
+        SELECT * FROM cte
+        """
+        with pytest.raises(ValueError, match="not allowed"):
+            connection.validate_query(query)
+
+    def test_validate_query_rejects_semicolon(self, connection):
+        """Test validate_query rejects queries with semicolons."""
+        query = "SELECT * FROM table1; DELETE FROM table2"
+        with pytest.raises(ValueError, match="Multiple statements"):
+            connection.validate_query(query)
+
+    def test_parse_query_type(self, connection):
+        """Test _parse_query_type method."""
+        assert connection._parse_query_type("SELECT * FROM table") == "SELECT"
+        assert connection._parse_query_type("  SHOW TABLES  ") == "SHOW"
+        assert connection._parse_query_type("WITH cte AS (...) SELECT ...") == "WITH"
+        assert connection._parse_query_type("describe table test") == "DESCRIBE"
+
+    def test_is_write_operation(self, connection):
+        """Test _is_write_operation method."""
+        write_ops = ["INSERT", "UPDATE", "DELETE", "CREATE", "DROP", "ALTER", "TRUNCATE"]
+        for op in write_ops:
+            assert connection._is_write_operation(op) is True
+
+        read_ops = ["SELECT", "SHOW", "DESCRIBE", "WITH"]
+        for op in read_ops:
+            assert connection._is_write_operation(op) is False
+
+    def test_execute_query_success(self, connection):
+        """Test successful query execution."""
+        mock_cursor = MagicMock()
+        mock_cursor.fetchall.return_value = [(1, "test"), (2, "data")]
+        mock_cursor.description = [("id",), ("name",)]
+
+        connection.connection = MagicMock()
+        connection.connection.cursor.return_value = mock_cursor
+
+        query = "SELECT * FROM test_table"
+        result = connection.execute_query(query)
+
+        assert result["success"] is True
+        assert result["data"] == [(1, "test"), (2, "data")]
+        assert result["columns"] == ["id", "name"]
+        assert result["query"] == query
+        assert "execution_time" in result
+
+        # Check query history
+        assert len(connection.query_history) == 1
+        assert connection.query_history[0]["query"] == query
+
+    def test_execute_query_with_params(self, connection):
+        """Test query execution with parameters."""
+        mock_cursor = MagicMock()
+        mock_cursor.fetchall.return_value = [(1,)]
+        mock_cursor.description = [("count",)]
+
+        connection.connection = MagicMock()
+        connection.connection.cursor.return_value = mock_cursor
+
+        query = "SELECT COUNT(*) FROM table WHERE id = %s"
+        params = (123,)
+        result = connection.execute_query(query, params=params)
+
+        assert result["success"] is True
+        mock_cursor.execute.assert_called_with(query, params)
+
+    def test_execute_query_validation_failure(self, connection):
+        """Test query execution with validation failure."""
+        connection.connection = MagicMock()
+
+        query = "DELETE FROM test_table"
+        result = connection.execute_query(query)
+
+        assert result["success"] is False
+        assert "not allowed" in result["error"]
+
+    def test_execute_query_database_error(self, connection):
+        """Test query execution with database error."""
+        mock_cursor = MagicMock()
+        mock_cursor.execute.side_effect = Exception("Database error")
+
+        connection.connection = MagicMock()
+        connection.connection.cursor.return_value = mock_cursor
+
+        query = "SELECT * FROM nonexistent_table"
+        result = connection.execute_query(query)
+
+        assert result["success"] is False
+        assert "Database error" in result["error"]
+
+    def test_execute_query_in_transaction(self, connection):
+        """Test that queries are executed in read-only transactions."""
+        mock_cursor = MagicMock()
+        mock_cursor.fetchall.return_value = []
+        mock_cursor.description = []
+
+        connection.connection = MagicMock()
+        connection.connection.cursor.return_value = mock_cursor
+
+        query = "SELECT 1"
+        connection.execute_query(query)
+
+        # Verify transaction commands were called
+        calls = mock_cursor.execute.call_args_list
+        assert any("BEGIN TRANSACTION READ ONLY" in str(call) for call in calls)
+        assert any("COMMIT" in str(call) for call in calls)
+
+    def test_get_query_history(self, connection):
+        """Test getting query history."""
+        # Execute some queries
+        connection.query_history = [
+            {"query": "SELECT 1", "success": True},
+            {"query": "SELECT 2", "success": True},
+            {"query": "INVALID", "success": False},
+        ]
+
+        # Get all history
+        history = connection.get_query_history()
+        assert len(history) == 3
+
+        # Get only successful queries
+        history = connection.get_query_history(only_successful=True)
+        assert len(history) == 2
+
+        # Get limited history
+        history = connection.get_query_history(limit=1)
+        assert len(history) == 1
+
+    def test_clear_query_history(self, connection):
+        """Test clearing query history."""
+        connection.query_history = [{"query": "SELECT 1"}]
+        connection.clear_query_history()
+        assert connection.query_history == []
+
+    def test_get_last_query_result(self, connection):
+        """Test getting last query result."""
+        result = {"data": [(1, 2)], "columns": ["a", "b"]}
+        connection._last_query_result = result
+
+        last_result = connection.get_last_query_result()
+        assert last_result == result
+
+    def test_get_last_query_result_none(self, connection):
+        """Test getting last query result when none exists."""
+        result = connection.get_last_query_result()
+        assert result is None
+
+    def test_format_sql(self, connection):
+        """Test SQL formatting."""
+        sql = "SELECT * FROM table WHERE id = 1"
+        formatted = connection.format_sql(sql)
+        assert formatted == sql  # Simple case
+
+        # Test multiline formatting
+        sql = "WITH cte AS (SELECT * FROM t1) SELECT * FROM cte"
+        formatted = connection.format_sql(sql)
+        assert "WITH cte AS" in formatted

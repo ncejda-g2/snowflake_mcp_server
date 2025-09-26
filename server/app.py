@@ -112,7 +112,10 @@ async def refresh_catalog_tool(
     try:
         initialize_resources(require_connection=True)
     except Exception as e:
-        return {"status": "error", "message": f"Failed to connect to Snowflake: {str(e)}"}
+        return {
+            "status": "error",
+            "message": f"Failed to connect to Snowflake: {str(e)}",
+        }
 
     if connection is None:
         raise RuntimeError("Connection initialization failed")

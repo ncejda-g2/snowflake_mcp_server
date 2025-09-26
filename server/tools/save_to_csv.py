@@ -185,7 +185,9 @@ async def save_last_query_to_csv(
             response = {
                 "status": "success",
                 "message": f"Successfully exported {row_count} rows to CSV",
-                "file_path": os.path.abspath(expanded_path),  # Always return absolute path
+                "file_path": os.path.abspath(
+                    expanded_path
+                ),  # Always return absolute path
                 "row_count": row_count,
                 "column_count": len(column_names),
                 "file_size_mb": round(file_size_mb, 2),
