@@ -5,12 +5,14 @@ All notable changes to the Snowflake MCP Server will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.1.1] - 2025-01-26
 
 ### Added
 - Always return absolute paths in file export responses for clarity
 - Convert relative paths to absolute paths based on MCP server's working directory
 - Improved error messages to show absolute paths
+- CHANGELOG.md for tracking version history
+- Dynamic version badge in README that reads from pyproject.toml
 
 ### Fixed
 - File path resolution issues where relative paths were ambiguous
