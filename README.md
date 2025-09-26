@@ -1,6 +1,6 @@
 # Snowflake MCP Server
 
-[![Version](https://img.shields.io/badge/version-v0.1.1-blue)](https://github.com/ncejda-g2/snowflake_mcp_server/releases)
+[![Version](https://img.shields.io/badge/version-v0.1.1-9b59b6)](https://github.com/ncejda-g2/snowflake_mcp_server/releases)
 [![Changelog](https://img.shields.io/badge/changelog-Latest%20Changes-blue.svg)](./CHANGELOG.md)
 [![MCP](https://img.shields.io/badge/MCP-Model%20Context%20Protocol-green.svg)](https://modelcontextprotocol.io)
 
