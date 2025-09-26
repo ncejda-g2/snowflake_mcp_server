@@ -1,6 +1,6 @@
 <div align="center">
   <br />
-  <img src="assets/logo.png" alt="Snowflake MCP" width="150" />
+  <img src="assets/logo.png" alt="Snowflake MCP" width="200" />
   <br />
   <br />
 
@@ -200,15 +200,15 @@ Replace:
 
 The server provides powerful tools for interacting with Snowflake:
 
-| Tool | Description | Example |
-|------|-------------|---------|
-| `refresh_catalog` | Scan and cache all database schemas | First command to run |
-| `inspect_schemas` | Browse database structure | Find tables and schemas |
-| `search_tables` | Search across all databases | `search_tables("customer")` |
-| `get_table_schema` | View table columns & sample data | Understand data structure |
-| `execute_query` | Run read-only SQL queries | `SELECT * FROM table` |
-| `execute_big_query_to_disk` | Stream large results to CSV | Handle GB-sized exports |
-| `save_last_query_to_csv` | Export query results | Save for analysis |
+| Tool | Description |
+|------|-------------|
+| `refresh_catalog` | Scan and cache all database schemas |
+| `inspect_schemas` | Browse database structure |
+| `search_tables` | Search across all databases |
+| `get_table_schema` | View table columns & sample data |
+| `execute_query` | Run read-only SQL queries |
+| `execute_big_query_to_disk` | Stream large results to CSV |
+| `save_last_query_to_csv` | Export query results |
 
 
 
