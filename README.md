@@ -1,6 +1,6 @@
 # Snowflake MCP Server
 
-![Version](https://img.shields.io/badge/dynamic/toml?url=https://raw.githubusercontent.com/ncejda-g2/snowflake_mcp_server/main/pyproject.toml&query=project.version&label=version&color=blue)
+![GitHub release](https://img.shields.io/github/v/release/ncejda-g2/snowflake_mcp_server?color=blue)
 [![Changelog](https://img.shields.io/badge/changelog-Latest%20Changes-blue.svg)](./CHANGELOG.md)
 [![MCP](https://img.shields.io/badge/MCP-Model%20Context%20Protocol-green.svg)](https://modelcontextprotocol.io)
 
@@ -367,7 +367,15 @@ Export the last query results to a CSV file.
 - Includes column headers
 - Results must be under 5GB cache limit
 
-### 7. `get_query_history`
+### 7. `execute_big_query_to_disk`
+Stream large query results directly to a CSV file.
+- Handles arbitrarily large result sets using streaming
+- Bypasses token limits by not returning data in response
+- Automatically exports SQL query to a .sql file
+- Configurable timeout for long-running queries (up to 1 hour)
+- Returns only execution status, row count, and file size
+
+### 8. `get_query_history`
 View previously executed queries in the session.
 - Shows execution time and status
 - Can include failed queries
@@ -396,13 +404,27 @@ execute_query("SELECT * FROM SALES_DB.PUBLIC.CUSTOMERS WHERE revenue > 10000")
 
 #### Export Query Results
 ```python
-# Execute a query
+# For smaller results - returns data in response
 execute_query("SELECT * FROM large_table LIMIT 1000")
 # Returns: All 1000 rows
 
 # Export to CSV
 save_last_query_to_csv("~/Downloads/results.csv")
-# Creates CSV file with all query results
+# Creates: results.csv with all query results
+# Creates: results.sql with formatted SQL query
+```
+
+#### Stream Large Query Results to Disk
+```python
+# For very large result sets - streams directly to disk without returning data
+execute_big_query_to_disk(
+    "SELECT * FROM very_large_table",
+    "~/Downloads/large_export.csv",
+    timeout_seconds=600  # 10 minutes for long queries
+)
+# Creates: large_export.csv with streamed results
+# Creates: large_export.sql with formatted SQL query
+# Returns: Only status, row count, and file size (no data in response)
 ```
 
 ## Security Features
