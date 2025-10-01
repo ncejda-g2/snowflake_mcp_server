@@ -315,7 +315,7 @@ class TestSnowflakeConnection:
         connection.connection = MagicMock()
 
         query = "DELETE FROM test_table"
-        with pytest.raises(ValueError, match="not permitted"):
+        with pytest.raises(ValueError, match="write operations"):
             connection.execute_query(query)
 
     def test_execute_query_not_connected(self, connection):
