@@ -267,7 +267,6 @@ class QueryValidator:
             error_lines.append(
                 f"  - '{op['keyword']}' at line {op['line']}, column {op['column']}"
             )
-            error_lines.append(f"    Context: {op['context']}")
 
         return "\n".join(error_lines)
 
