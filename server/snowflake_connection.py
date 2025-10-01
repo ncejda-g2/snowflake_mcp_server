@@ -9,9 +9,11 @@ from dataclasses import dataclass
 from enum import Enum
 
 import snowflake.connector
+import sqlparse
 from snowflake.connector import DictCursor
 from snowflake.connector.connection import SnowflakeConnection as SnowflakeConn
 from snowflake.connector.errors import ProgrammingError
+from sqlparse import tokens as T
 
 from server.config import Config
 
@@ -41,7 +43,7 @@ class QueryResult:
 
 
 class QueryValidator:
-    """Validates SQL queries for read-only safety."""
+    """Validates SQL queries for read-only safety using proper SQL parsing."""
 
     # Comprehensive list of write operations
     WRITE_OPERATIONS = {
@@ -76,7 +78,7 @@ class QueryValidator:
     @classmethod
     def validate(cls, sql: str) -> tuple[bool, str, QueryType]:
         """
-        Validate that SQL query is read-only.
+        Validate that SQL query is read-only using proper SQL parsing.
 
         Returns:
             Tuple of (is_valid, error_message, query_type)
@@ -84,104 +86,193 @@ class QueryValidator:
         if not sql or not sql.strip():
             return False, "Empty query", QueryType.UNKNOWN
 
-        # Remove comments and normalize
-        sql_clean = cls._remove_comments(sql)
-        sql_upper = sql_clean.upper().strip()
+        # Parse SQL using sqlparse
+        try:
+            parsed = sqlparse.parse(sql)
+        except Exception as e:
+            return False, f"Failed to parse SQL: {str(e)}", QueryType.UNKNOWN
 
-        # Check for multiple statements (semicolon not at end)
-        if ";" in sql_clean:
-            # Remove trailing semicolon and check again
-            sql_no_trailing = sql_clean.rstrip().rstrip(";")
-            if ";" in sql_no_trailing:
-                return (
-                    False,
-                    "Multiple statements not allowed. Only single queries permitted.",
-                    QueryType.UNKNOWN,
-                )
+        if not parsed:
+            return False, "Empty or invalid query", QueryType.UNKNOWN
 
-        # Extract the main operation
-        query_type = cls._identify_query_type(sql_upper)
-
-        if query_type == QueryType.WRITE:
-            operation = cls._get_first_operation(sql_upper)
+        # Check for multiple statements
+        if len(parsed) > 1:
             return (
                 False,
-                f"Write operation '{operation}' is not permitted. Only read operations are allowed.",
+                "Multiple statements not allowed. Only single queries permitted.",
+                QueryType.UNKNOWN,
+            )
+
+        statement = parsed[0]
+
+        # Get first meaningful keyword token
+        query_type, first_keyword = cls._identify_query_type(statement)
+
+        if query_type == QueryType.WRITE:
+            return (
+                False,
+                f"Write operation '{first_keyword}' is not permitted. Only read operations (SELECT, SHOW, DESCRIBE, EXPLAIN, WITH) are allowed.",
                 QueryType.WRITE,
             )
 
-        # Additional safety check - scan entire query for write operations
-        if cls._contains_write_operation(sql_upper):
+        if query_type == QueryType.UNKNOWN:
             return (
                 False,
-                "Query contains write operations. Only read operations are allowed.",
+                f"Unknown or disallowed operation '{first_keyword}'. Only read operations (SELECT, SHOW, DESCRIBE, EXPLAIN, WITH) are allowed.",
+                QueryType.UNKNOWN,
+            )
+
+        # Additional safety check - scan all keyword tokens for write operations
+        write_ops_found = cls._find_write_operations(statement, sql)
+        if write_ops_found:
+            error_details = cls._format_write_operation_errors(write_ops_found)
+            return (
+                False,
+                f"Query contains write operations. Only read operations are allowed.\n\n{error_details}",
                 QueryType.WRITE,
             )
 
         return True, "", query_type
 
     @classmethod
-    def _remove_comments(cls, sql: str) -> str:
-        """Remove SQL comments."""
-        # Remove single-line comments
-        sql = re.sub(r"--[^\n]*", "", sql)
-        # Remove multi-line comments
-        sql = re.sub(r"/\*.*?\*/", "", sql, flags=re.DOTALL)
-        return sql
+    def _identify_query_type(cls, statement) -> tuple[QueryType, str]:
+        """
+        Identify the type of SQL query by examining keyword tokens.
 
-    @classmethod
-    def _identify_query_type(cls, sql_upper: str) -> QueryType:
-        """Identify the type of SQL query."""
-        # Get first meaningful word
-        words = sql_upper.split()
-        if not words:
-            return QueryType.UNKNOWN
+        Returns:
+            Tuple of (QueryType, first_keyword_text)
+        """
+        # Get first meaningful keyword token
+        first_keyword = None
+        for token in statement.flatten():
+            if token.ttype in (T.Keyword.DML, T.Keyword.DDL, T.Keyword):
+                first_keyword = token.value.upper().strip()
+                break
 
-        first_word = words[0]
+        if not first_keyword:
+            return QueryType.UNKNOWN, "UNKNOWN"
 
         # Handle CTEs - look for the actual operation after WITH
-        if first_word == "WITH":
-            # Find the main operation after the CTE definition
-            # Look for pattern: ) SELECT/INSERT/UPDATE/DELETE etc
-            cte_pattern = r"\)\s+(\w+)"
-            match = re.search(cte_pattern, sql_upper)
-            if match:
-                main_operation = match.group(1)
-                if main_operation in cls.WRITE_OPERATIONS:
-                    return QueryType.WRITE
-                elif main_operation in cls.READ_OPERATIONS:
-                    return QueryType.WITH
-            return QueryType.WITH
+        if first_keyword == "WITH":
+            # For WITH queries, look for the main operation keyword after the CTE
+            found_with = False
+            for token in statement.flatten():
+                if token.ttype in (T.Keyword.DML, T.Keyword.DDL, T.Keyword):
+                    keyword_upper = token.value.upper().strip()
+                    if keyword_upper == "WITH":
+                        found_with = True
+                    elif found_with and keyword_upper in ("SELECT", "INSERT", "UPDATE", "DELETE", "MERGE"):
+                        # Found the main operation after WITH
+                        if keyword_upper in cls.WRITE_OPERATIONS:
+                            return QueryType.WRITE, keyword_upper
+                        elif keyword_upper == "SELECT":
+                            return QueryType.WITH, first_keyword
+            return QueryType.WITH, first_keyword
 
-        if first_word in cls.WRITE_OPERATIONS:
-            return QueryType.WRITE
-        elif first_word == "SELECT":
-            return QueryType.SELECT
-        elif first_word == "SHOW":
-            return QueryType.SHOW
-        elif first_word in ("DESCRIBE", "DESC"):
-            return QueryType.DESCRIBE
-        elif first_word == "EXPLAIN":
-            return QueryType.EXPLAIN
+        if first_keyword in cls.WRITE_OPERATIONS:
+            return QueryType.WRITE, first_keyword
+        elif first_keyword == "SELECT":
+            return QueryType.SELECT, first_keyword
+        elif first_keyword == "SHOW":
+            return QueryType.SHOW, first_keyword
+        elif first_keyword in ("DESCRIBE", "DESC"):
+            return QueryType.DESCRIBE, first_keyword
+        elif first_keyword == "EXPLAIN":
+            return QueryType.EXPLAIN, first_keyword
         else:
             # Unknown operations are treated as potentially unsafe
-            return QueryType.UNKNOWN
+            return QueryType.UNKNOWN, first_keyword
 
     @classmethod
-    def _get_first_operation(cls, sql_upper: str) -> str:
-        """Get the first SQL operation."""
-        words = sql_upper.split()
-        return words[0] if words else "UNKNOWN"
+    def _find_write_operations(cls, statement, original_sql: str) -> list[dict]:
+        """
+        Find write operation keywords in the parsed statement.
+
+        Only examines actual SQL keywords, not string literals or identifiers.
+
+        Returns:
+            List of dicts with: {keyword, position, line, column}
+        """
+        write_ops_found = []
+
+        # Track position in original SQL
+        lines = original_sql.split('\n')
+
+        for token in statement.flatten():
+            # Only check keyword tokens (not strings, identifiers, etc)
+            if token.ttype in (T.Keyword.DML, T.Keyword.DDL, T.Keyword):
+                keyword_upper = token.value.upper().strip()
+
+                # Skip the allowed first keywords for CTEs and read operations
+                if keyword_upper in cls.READ_OPERATIONS:
+                    continue
+
+                if keyword_upper in cls.WRITE_OPERATIONS:
+                    # Find position in original SQL
+                    position = cls._find_token_position(original_sql, token.value)
+                    write_ops_found.append({
+                        "keyword": keyword_upper,
+                        "position": position["char_pos"],
+                        "line": position["line"],
+                        "column": position["column"],
+                        "context": position["context"]
+                    })
+
+        return write_ops_found
 
     @classmethod
-    def _contains_write_operation(cls, sql_upper: str) -> bool:
-        """Check if query contains any write operations as whole words."""
-        for operation in cls.WRITE_OPERATIONS:
-            # Use word boundaries to avoid false positives
-            pattern = r"\b" + operation + r"\b"
-            if re.search(pattern, sql_upper):
-                return True
-        return False
+    def _find_token_position(cls, sql: str, token_value: str) -> dict:
+        """
+        Find the position of a token in the original SQL.
+
+        Returns:
+            Dict with char_pos, line, column, and context
+        """
+        lines = sql.split('\n')
+        char_pos = 0
+
+        for line_num, line in enumerate(lines, 1):
+            # Case-insensitive search for the token
+            col = line.upper().find(token_value.upper())
+            if col != -1:
+                return {
+                    "char_pos": char_pos + col,
+                    "line": line_num,
+                    "column": col + 1,
+                    "context": line.strip()
+                }
+            char_pos += len(line) + 1  # +1 for newline
+
+        # Fallback if not found
+        return {
+            "char_pos": 0,
+            "line": 1,
+            "column": 1,
+            "context": sql[:100]
+        }
+
+    @classmethod
+    def _format_write_operation_errors(cls, write_ops: list[dict]) -> str:
+        """
+        Format detailed error message showing which write operations were found.
+
+        Args:
+            write_ops: List of dicts with keyword, line, column, context
+
+        Returns:
+            Formatted error string
+        """
+        if not write_ops:
+            return ""
+
+        error_lines = ["Detected write operations:"]
+        for op in write_ops:
+            error_lines.append(
+                f"  - '{op['keyword']}' at line {op['line']}, column {op['column']}"
+            )
+            error_lines.append(f"    Context: {op['context']}")
+
+        return "\n".join(error_lines)
 
 
 class SnowflakeConnection:
