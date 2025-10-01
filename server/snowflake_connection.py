@@ -145,7 +145,7 @@ class QueryValidator:
         # Get first meaningful keyword token
         first_keyword = None
         for token in statement.flatten():
-            if token.ttype in (T.Keyword.DML, T.Keyword.DDL, T.Keyword):
+            if token.ttype in (T.Keyword.DML, T.Keyword.DDL, T.Keyword, T.Keyword.CTE, T.Keyword.Order):
                 first_keyword = token.value.upper().strip()
                 break
 
@@ -155,18 +155,14 @@ class QueryValidator:
         # Handle CTEs - look for the actual operation after WITH
         if first_keyword == "WITH":
             # For WITH queries, look for the main operation keyword after the CTE
-            found_with = False
             for token in statement.flatten():
-                if token.ttype in (T.Keyword.DML, T.Keyword.DDL, T.Keyword):
+                if token.ttype == T.Keyword.DML:
                     keyword_upper = token.value.upper().strip()
-                    if keyword_upper == "WITH":
-                        found_with = True
-                    elif found_with and keyword_upper in ("SELECT", "INSERT", "UPDATE", "DELETE", "MERGE"):
-                        # Found the main operation after WITH
-                        if keyword_upper in cls.WRITE_OPERATIONS:
-                            return QueryType.WRITE, keyword_upper
-                        elif keyword_upper == "SELECT":
-                            return QueryType.WITH, first_keyword
+                    # Found the main operation after WITH
+                    if keyword_upper in cls.WRITE_OPERATIONS:
+                        return QueryType.WRITE, keyword_upper
+                    elif keyword_upper == "SELECT":
+                        return QueryType.WITH, first_keyword
             return QueryType.WITH, first_keyword
 
         if first_keyword in cls.WRITE_OPERATIONS:
@@ -200,7 +196,7 @@ class QueryValidator:
 
         for token in statement.flatten():
             # Only check keyword tokens (not strings, identifiers, etc)
-            if token.ttype in (T.Keyword.DML, T.Keyword.DDL, T.Keyword):
+            if token.ttype in (T.Keyword.DML, T.Keyword.DDL, T.Keyword, T.Keyword.CTE):
                 keyword_upper = token.value.upper().strip()
 
                 # Skip the allowed first keywords for CTEs and read operations

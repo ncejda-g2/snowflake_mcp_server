@@ -86,6 +86,134 @@ class TestQueryValidator:
         assert is_valid is False
         assert "Multiple statements" in error
 
+    def test_validate_allows_write_keywords_in_string_literals(self):
+        """Test that validator allows write keywords inside string literals (regression test)."""
+        # This is the exact query from the bug report
+        query = """
+        SELECT
+            a.ID as answer_id,
+            a.SURVEY_RESPONSE_ID,
+            a.PRODUCT_ID,
+            a.QUESTION_ID,
+            a.COMMENT as answer_text
+        FROM GDC.STAGING.ADMIN__ANSWERS a
+        WHERE a.PRODUCT_ID = 40484
+            AND (
+                LOWER(a.COMMENT) LIKE '%reassign%'
+                OR LOWER(a.COMMENT) LIKE '%pdf%'
+                OR LOWER(a.COMMENT) LIKE '%photo%'
+                OR LOWER(a.COMMENT) LIKE '%repeat%task%'
+                OR LOWER(a.COMMENT) LIKE '%time limit%'
+                OR LOWER(a.COMMENT) LIKE '%questions%set%'
+                OR LOWER(a.COMMENT) LIKE '%locked%format%'
+                OR LOWER(a.COMMENT) LIKE '%redo%'
+                OR LOWER(a.COMMENT) LIKE '%lapsed%audit%'
+                OR LOWER(a.COMMENT) LIKE '%missed%audit%'
+            )
+        LIMIT 30
+        """
+        is_valid, error, qtype = QueryValidator.validate(query)
+        assert is_valid is True, f"Query should be valid but got error: {error}"
+        assert qtype == QueryType.SELECT
+
+    def test_validate_allows_write_keywords_in_column_names(self):
+        """Test that validator allows write keywords as column names."""
+        queries = [
+            "SELECT comment, insert_date, update_time FROM table",
+            "SELECT a.COMMENT, a.DELETE_FLAG FROM table a",
+            "SELECT * FROM table WHERE comment LIKE '%test%'",
+        ]
+
+        for query in queries:
+            is_valid, error, qtype = QueryValidator.validate(query)
+            assert is_valid is True, f"Query '{query}' should be valid but got error: {error}"
+            assert qtype == QueryType.SELECT
+
+    def test_validate_rejects_actual_set_command(self):
+        """Test that validator correctly rejects actual SET commands."""
+        queries = [
+            "SET SQL_MODE = 'TRADITIONAL'",
+            "SET @var = 1",
+            "SET SESSION sql_mode = 'STRICT_TRANS_TABLES'",
+        ]
+
+        for query in queries:
+            is_valid, error, qtype = QueryValidator.validate(query)
+            assert is_valid is False, f"Query '{query}' should be rejected"
+            assert "not permitted" in error.lower() or "not allowed" in error.lower()
+
+    def test_validate_provides_detailed_error_for_write_operations(self):
+        """Test that validator provides detailed error messages with position info."""
+        query = "SELECT * FROM table; INSERT INTO table VALUES (1)"
+        is_valid, error, qtype = QueryValidator.validate(query)
+        assert is_valid is False
+        assert "Multiple statements" in error
+
+        # Test write operation detection with position
+        query2 = "UPDATE table SET col = 1"
+        is_valid, error, qtype = QueryValidator.validate(query2)
+        assert is_valid is False
+        assert "UPDATE" in error
+        assert "not permitted" in error.lower() or "not allowed" in error.lower()
+
+    def test_validate_complex_queries_with_string_literals(self):
+        """Test validator with complex queries containing various string patterns."""
+        queries = [
+            # Query with 'INSERT' in string
+            "SELECT * FROM logs WHERE action = 'INSERT'",
+            # Query with 'DELETE' in string
+            "SELECT user_id FROM audit WHERE message LIKE '%DELETE%operation%'",
+            # Query with multiple write keywords in strings
+            "SELECT * FROM events WHERE type IN ('CREATE', 'UPDATE', 'DELETE')",
+            # Query with 'SET' in LIKE pattern
+            "SELECT * FROM data WHERE description LIKE '%data%set%'",
+            # Query with 'DROP' in column comparison
+            "SELECT * FROM items WHERE status != 'DROP'",
+        ]
+
+        for query in queries:
+            is_valid, error, qtype = QueryValidator.validate(query)
+            assert is_valid is True, f"Query '{query}' should be valid but got error: {error}"
+            assert qtype == QueryType.SELECT
+
+    def test_validate_cte_with_write_operation_rejected(self):
+        """Test that CTEs with write operations are rejected."""
+        query = """
+        WITH cte AS (
+            SELECT * FROM table1
+        )
+        INSERT INTO table2 SELECT * FROM cte
+        """
+        is_valid, error, qtype = QueryValidator.validate(query)
+        assert is_valid is False
+        assert "INSERT" in error
+
+    def test_validate_empty_and_invalid_queries(self):
+        """Test validator with empty and invalid queries."""
+        queries = [
+            "",
+            "   ",
+            "\n\n",
+        ]
+
+        for query in queries:
+            is_valid, error, qtype = QueryValidator.validate(query)
+            assert is_valid is False
+            assert "Empty" in error
+
+    def test_validate_case_insensitive(self):
+        """Test that validation works regardless of case."""
+        queries = [
+            "select * from table",
+            "SELECT * FROM TABLE",
+            "SeLeCt * FrOm TaBlE",
+        ]
+
+        for query in queries:
+            is_valid, error, qtype = QueryValidator.validate(query)
+            assert is_valid is True
+            assert qtype == QueryType.SELECT
+
 
 class TestSnowflakeConnection:
     """Test SnowflakeConnection class."""
