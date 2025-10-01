@@ -62,6 +62,30 @@ class TestQueryValidator:
         assert is_valid is True
         assert qtype == QueryType.WITH
 
+    def test_validate_with_cte_lateral_flatten(self):
+        """Test validating WITH (CTE) queries with LATERAL FLATTEN (regression test)."""
+        query = """
+        -- Get all unique survey IDs from denormalized themes for Sugerio
+        WITH all_survey_ids AS (
+            SELECT DISTINCT value::NUMBER as survey_id
+            FROM ML_PROD.MODEL_OUT.DENORMALIZED_ATTRIBUTED_THEMES,
+            LATERAL FLATTEN(input => SURVEY_RESPONSE_IDS)
+            WHERE PRODUCT_ID = 1335317
+        )
+        SELECT
+            sr.SURVEY_ID,
+            sr.TITLE as survey_title,
+            sr.AASM_STATE,
+            sr.SUBMITTED_AT
+        FROM all_survey_ids asi
+        JOIN GDC.REPORTING.FACT_SURVEY_RESPONSES sr ON asi.survey_id = sr.SURVEY_ID
+        WHERE sr.AASM_STATE != 'approved'
+        ORDER BY sr.SURVEY_ID
+        """
+        is_valid, error, qtype = QueryValidator.validate(query)
+        assert is_valid is True, f"Query should be valid but got error: {error}"
+        assert qtype == QueryType.WITH
+
     def test_validate_rejects_write_operations(self):
         """Test that validator rejects write operations."""
         write_queries = [
