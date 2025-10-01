@@ -145,7 +145,13 @@ class QueryValidator:
         # Get first meaningful keyword token
         first_keyword = None
         for token in statement.flatten():
-            if token.ttype in (T.Keyword.DML, T.Keyword.DDL, T.Keyword, T.Keyword.CTE, T.Keyword.Order):
+            if token.ttype in (
+                T.Keyword.DML,
+                T.Keyword.DDL,
+                T.Keyword,
+                T.Keyword.CTE,
+                T.Keyword.Order,
+            ):
                 first_keyword = token.value.upper().strip()
                 break
 
@@ -191,9 +197,6 @@ class QueryValidator:
         """
         write_ops_found = []
 
-        # Track position in original SQL
-        lines = original_sql.split('\n')
-
         for token in statement.flatten():
             # Only check keyword tokens (not strings, identifiers, etc)
             if token.ttype in (T.Keyword.DML, T.Keyword.DDL, T.Keyword, T.Keyword.CTE):
@@ -206,13 +209,15 @@ class QueryValidator:
                 if keyword_upper in cls.WRITE_OPERATIONS:
                     # Find position in original SQL
                     position = cls._find_token_position(original_sql, token.value)
-                    write_ops_found.append({
-                        "keyword": keyword_upper,
-                        "position": position["char_pos"],
-                        "line": position["line"],
-                        "column": position["column"],
-                        "context": position["context"]
-                    })
+                    write_ops_found.append(
+                        {
+                            "keyword": keyword_upper,
+                            "position": position["char_pos"],
+                            "line": position["line"],
+                            "column": position["column"],
+                            "context": position["context"],
+                        }
+                    )
 
         return write_ops_found
 
@@ -224,7 +229,7 @@ class QueryValidator:
         Returns:
             Dict with char_pos, line, column, and context
         """
-        lines = sql.split('\n')
+        lines = sql.split("\n")
         char_pos = 0
 
         for line_num, line in enumerate(lines, 1):
@@ -235,17 +240,12 @@ class QueryValidator:
                     "char_pos": char_pos + col,
                     "line": line_num,
                     "column": col + 1,
-                    "context": line.strip()
+                    "context": line.strip(),
                 }
             char_pos += len(line) + 1  # +1 for newline
 
         # Fallback if not found
-        return {
-            "char_pos": 0,
-            "line": 1,
-            "column": 1,
-            "context": sql[:100]
-        }
+        return {"char_pos": 0, "line": 1, "column": 1, "context": sql[:100]}
 
     @classmethod
     def _format_write_operation_errors(cls, write_ops: list[dict]) -> str:

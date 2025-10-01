@@ -126,7 +126,9 @@ class TestQueryValidator:
 
         for query in queries:
             is_valid, error, qtype = QueryValidator.validate(query)
-            assert is_valid is True, f"Query '{query}' should be valid but got error: {error}"
+            assert is_valid is True, (
+                f"Query '{query}' should be valid but got error: {error}"
+            )
             assert qtype == QueryType.SELECT
 
     def test_validate_rejects_actual_set_command(self):
@@ -173,7 +175,9 @@ class TestQueryValidator:
 
         for query in queries:
             is_valid, error, qtype = QueryValidator.validate(query)
-            assert is_valid is True, f"Query '{query}' should be valid but got error: {error}"
+            assert is_valid is True, (
+                f"Query '{query}' should be valid but got error: {error}"
+            )
             assert qtype == QueryType.SELECT
 
     def test_validate_cte_with_write_operation_rejected(self):
