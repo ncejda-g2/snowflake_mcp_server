@@ -77,7 +77,8 @@ class TestQueryValidator:
         for query in write_queries:
             is_valid, error, qtype = QueryValidator.validate(query)
             assert is_valid is False
-            assert "not permitted" in error or "not allowed" in error
+            assert "write operations" in error.lower()
+            assert "only read operations are allowed" in error.lower()
 
     def test_validate_rejects_semicolon(self):
         """Test that validator rejects queries with semicolons."""
@@ -142,7 +143,8 @@ class TestQueryValidator:
         for query in queries:
             is_valid, error, qtype = QueryValidator.validate(query)
             assert is_valid is False, f"Query '{query}' should be rejected"
-            assert "not permitted" in error.lower() or "not allowed" in error.lower()
+            assert "write operations" in error.lower()
+            assert "only read operations are allowed" in error.lower()
 
     def test_validate_provides_detailed_error_for_write_operations(self):
         """Test that validator provides detailed error messages with position info."""
@@ -156,7 +158,9 @@ class TestQueryValidator:
         is_valid, error, qtype = QueryValidator.validate(query2)
         assert is_valid is False
         assert "UPDATE" in error
-        assert "not permitted" in error.lower() or "not allowed" in error.lower()
+        assert "line 1, column 1" in error
+        assert "write operations" in error.lower()
+        assert "only read operations are allowed" in error.lower()
 
     def test_validate_complex_queries_with_string_literals(self):
         """Test validator with complex queries containing various string patterns."""

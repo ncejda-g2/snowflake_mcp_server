@@ -108,7 +108,18 @@ class QueryValidator:
         # Get first meaningful keyword token
         query_type, first_keyword = cls._identify_query_type(statement)
 
+        # Check for any write operations and provide detailed position info
+        write_ops_found = cls._find_write_operations(statement, sql)
+        if write_ops_found:
+            error_details = cls._format_write_operation_errors(write_ops_found)
+            return (
+                False,
+                f"Query contains write operations. Only read operations are allowed.\n\n{error_details}",
+                QueryType.WRITE,
+            )
+
         if query_type == QueryType.WRITE:
+            # Fallback in case _find_write_operations missed it
             return (
                 False,
                 f"Write operation '{first_keyword}' is not permitted. Only read operations (SELECT, SHOW, DESCRIBE, EXPLAIN, WITH) are allowed.",
@@ -120,16 +131,6 @@ class QueryValidator:
                 False,
                 f"Unknown or disallowed operation '{first_keyword}'. Only read operations (SELECT, SHOW, DESCRIBE, EXPLAIN, WITH) are allowed.",
                 QueryType.UNKNOWN,
-            )
-
-        # Additional safety check - scan all keyword tokens for write operations
-        write_ops_found = cls._find_write_operations(statement, sql)
-        if write_ops_found:
-            error_details = cls._format_write_operation_errors(write_ops_found)
-            return (
-                False,
-                f"Query contains write operations. Only read operations are allowed.\n\n{error_details}",
-                QueryType.WRITE,
             )
 
         return True, "", query_type
