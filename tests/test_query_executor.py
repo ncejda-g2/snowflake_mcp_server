@@ -1,10 +1,7 @@
 """Tests for server/tools/query_executor.py module."""
 
-import json
-import sys
 from datetime import datetime
-from typing import Any
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -113,7 +110,9 @@ class TestExecuteQuery:
     async def test_execute_query_invalid_sql(self, mock_connection, mock_cache):
         """Test execute_query with invalid SQL."""
         with patch.object(
-            QueryValidator, "validate", return_value=(False, "Invalid query", QueryType.UNKNOWN)
+            QueryValidator,
+            "validate",
+            return_value=(False, "Invalid query", QueryType.UNKNOWN),
         ):
             result = await execute_query(mock_connection, mock_cache, "DROP TABLE test")
 
@@ -129,14 +128,18 @@ class TestExecuteQuery:
         with patch.object(
             QueryValidator, "validate", return_value=(True, None, QueryType.SELECT)
         ):
-            result = await execute_query(mock_connection, mock_cache, "SELECT * FROM test")
+            result = await execute_query(
+                mock_connection, mock_cache, "SELECT * FROM test"
+            )
 
             assert result["status"] == "error"
             assert "Schema cache is empty" in result["message"]
             assert result["action_required"] == "refresh_catalog"
 
     @pytest.mark.asyncio
-    async def test_execute_query_success(self, mock_connection, mock_cache, mock_query_result):
+    async def test_execute_query_success(
+        self, mock_connection, mock_cache, mock_query_result
+    ):
         """Test successful query execution."""
         mock_connection.execute_query.return_value = mock_query_result
 
@@ -144,7 +147,11 @@ class TestExecuteQuery:
             QueryValidator, "validate", return_value=(True, None, QueryType.SELECT)
         ):
             result = await execute_query(
-                mock_connection, mock_cache, "SELECT * FROM test", database="db1", schema="schema1"
+                mock_connection,
+                mock_cache,
+                "SELECT * FROM test",
+                database="db1",
+                schema="schema1",
             )
 
             assert result["status"] == "success"
@@ -167,7 +174,9 @@ class TestExecuteQuery:
         with patch.object(
             QueryValidator, "validate", return_value=(True, None, QueryType.SELECT)
         ):
-            result = await execute_query(mock_connection, mock_cache, "SELECT * FROM test WHERE 1=0")
+            result = await execute_query(
+                mock_connection, mock_cache, "SELECT * FROM test WHERE 1=0"
+            )
 
             assert result["status"] == "success"
             assert result["data"] == []
@@ -175,21 +184,32 @@ class TestExecuteQuery:
             assert get_last_query_cache() is None
 
     @pytest.mark.asyncio
-    async def test_execute_query_expired_cache_warning(self, mock_connection, mock_cache, mock_query_result):
+    async def test_execute_query_expired_cache_warning(
+        self, mock_connection, mock_cache, mock_query_result
+    ):
         """Test query with expired cache logs warning."""
         mock_cache.is_expired.return_value = True
         mock_connection.execute_query.return_value = mock_query_result
 
-        with patch.object(
-            QueryValidator, "validate", return_value=(True, None, QueryType.SELECT)
-        ), patch("server.tools.query_executor.logger") as mock_logger:
-            result = await execute_query(mock_connection, mock_cache, "SELECT * FROM test")
+        with (
+            patch.object(
+                QueryValidator, "validate", return_value=(True, None, QueryType.SELECT)
+            ),
+            patch("server.tools.query_executor.logger") as mock_logger,
+        ):
+            result = await execute_query(
+                mock_connection, mock_cache, "SELECT * FROM test"
+            )
 
             assert result["status"] == "success"
-            mock_logger.warning.assert_called_with("Schema cache is expired, consider refreshing")
+            mock_logger.warning.assert_called_with(
+                "Schema cache is expired, consider refreshing"
+            )
 
     @pytest.mark.asyncio
-    async def test_execute_query_large_cache_exceeded(self, mock_connection, mock_cache):
+    async def test_execute_query_large_cache_exceeded(
+        self, mock_connection, mock_cache
+    ):
         """Test query with results exceeding cache limit."""
         # Create large result set
         large_data = [{"id": i, "data": "x" * 10000} for i in range(1000)]
@@ -200,13 +220,18 @@ class TestExecuteQuery:
         mock_result.query_id = "large-query-id"
         mock_connection.execute_query.return_value = mock_result
 
-        with patch.object(
-            QueryValidator, "validate", return_value=(True, None, QueryType.SELECT)
-        ), patch("server.tools.query_executor._estimate_size") as mock_estimate:
+        with (
+            patch.object(
+                QueryValidator, "validate", return_value=(True, None, QueryType.SELECT)
+            ),
+            patch("server.tools.query_executor._estimate_size") as mock_estimate,
+        ):
             # Mock estimate_size to return a value larger than MAX_CACHE_SIZE_BYTES
             mock_estimate.return_value = MAX_CACHE_SIZE_BYTES + 1000000
 
-            result = await execute_query(mock_connection, mock_cache, "SELECT * FROM large_table")
+            result = await execute_query(
+                mock_connection, mock_cache, "SELECT * FROM large_table"
+            )
 
             assert result["status"] == "success"
             assert result["csv_export"]["available"] is False
@@ -234,11 +259,15 @@ class TestExecuteQuery:
         with patch.object(
             QueryValidator, "validate", return_value=(True, None, QueryType.SELECT)
         ):
-            result = await execute_query(mock_connection, mock_cache, "SELECT * FROM medium_table")
+            result = await execute_query(
+                mock_connection, mock_cache, "SELECT * FROM medium_table"
+            )
 
             assert result["status"] == "success"
             assert "token_limit_warning" in result
-            assert "approaching typical MCP token limits" in result["token_limit_warning"]
+            assert (
+                "approaching typical MCP token limits" in result["token_limit_warning"]
+            )
 
     @pytest.mark.asyncio
     async def test_execute_query_formats_values(self, mock_connection, mock_cache):
@@ -260,7 +289,9 @@ class TestExecuteQuery:
         with patch.object(
             QueryValidator, "validate", return_value=(True, None, QueryType.SELECT)
         ):
-            result = await execute_query(mock_connection, mock_cache, "SELECT * FROM test")
+            result = await execute_query(
+                mock_connection, mock_cache, "SELECT * FROM test"
+            )
 
             assert result["status"] == "success"
             row = result["data"][0]
@@ -277,7 +308,9 @@ class TestExecuteQuery:
         with patch.object(
             QueryValidator, "validate", return_value=(True, None, QueryType.SELECT)
         ):
-            result = await execute_query(mock_connection, mock_cache, "SELECT * FROM test")
+            result = await execute_query(
+                mock_connection, mock_cache, "SELECT * FROM test"
+            )
 
             assert result["status"] == "error"
             assert "Invalid parameter" in result["message"]
@@ -286,12 +319,19 @@ class TestExecuteQuery:
     @pytest.mark.asyncio
     async def test_execute_query_general_exception(self, mock_connection, mock_cache):
         """Test query execution with general exception."""
-        mock_connection.execute_query.side_effect = Exception("Database connection failed")
+        mock_connection.execute_query.side_effect = Exception(
+            "Database connection failed"
+        )
 
-        with patch.object(
-            QueryValidator, "validate", return_value=(True, None, QueryType.SELECT)
-        ), patch("server.tools.query_executor.logger") as mock_logger:
-            result = await execute_query(mock_connection, mock_cache, "SELECT * FROM test")
+        with (
+            patch.object(
+                QueryValidator, "validate", return_value=(True, None, QueryType.SELECT)
+            ),
+            patch("server.tools.query_executor.logger") as mock_logger,
+        ):
+            result = await execute_query(
+                mock_connection, mock_cache, "SELECT * FROM test"
+            )
 
             assert result["status"] == "error"
             assert "Database connection failed" in result["message"]
@@ -301,7 +341,9 @@ class TestExecuteQuery:
     @pytest.mark.asyncio
     async def test_execute_query_truncates_long_sql(self, mock_connection, mock_cache):
         """Test that long SQL queries are truncated in metadata."""
-        long_sql = "SELECT * FROM test WHERE " + " AND ".join([f"col{i} = {i}" for i in range(100)])
+        long_sql = "SELECT * FROM test WHERE " + " AND ".join(
+            [f"col{i} = {i}" for i in range(100)]
+        )
         assert len(long_sql) > 500
 
         mock_result = Mock()
@@ -357,7 +399,9 @@ class TestValidateQueryWithoutExecution:
     async def test_validate_write_query(self, mock_connection, mock_cache):
         """Test validation of write query."""
         with patch.object(
-            QueryValidator, "validate", return_value=(False, "Write operation", QueryType.WRITE)
+            QueryValidator,
+            "validate",
+            return_value=(False, "Write operation", QueryType.WRITE),
         ):
             result = await validate_query_without_execution(
                 mock_connection, mock_cache, "INSERT INTO test VALUES (1)"
@@ -402,13 +446,19 @@ class TestValidateQueryWithoutExecution:
             assert result["cache_status"]["is_expired"] is True
 
     @pytest.mark.asyncio
-    async def test_validate_with_database_schema_context(self, mock_connection, mock_cache):
+    async def test_validate_with_database_schema_context(
+        self, mock_connection, mock_cache
+    ):
         """Test validation with database and schema context."""
         with patch.object(
             QueryValidator, "validate", return_value=(True, None, QueryType.SELECT)
         ):
             result = await validate_query_without_execution(
-                mock_connection, mock_cache, "SELECT * FROM test", database="db1", schema="schema1"
+                mock_connection,
+                mock_cache,
+                "SELECT * FROM test",
+                database="db1",
+                schema="schema1",
             )
 
             assert result["status"] == "success"
@@ -417,7 +467,9 @@ class TestValidateQueryWithoutExecution:
             assert result["metadata"]["schema_context"] == "schema1"
 
     @pytest.mark.asyncio
-    async def test_validate_extracts_table_references(self, mock_connection, mock_cache):
+    async def test_validate_extracts_table_references(
+        self, mock_connection, mock_cache
+    ):
         """Test validation extracts table references."""
         sql = """
         SELECT a.*, b.name
@@ -429,7 +481,9 @@ class TestValidateQueryWithoutExecution:
         with patch.object(
             QueryValidator, "validate", return_value=(True, None, QueryType.SELECT)
         ):
-            result = await validate_query_without_execution(mock_connection, mock_cache, sql)
+            result = await validate_query_without_execution(
+                mock_connection, mock_cache, sql
+            )
 
             assert result["status"] == "success"
             assert len(result["metadata"]["table_references"]) == 3
@@ -475,7 +529,11 @@ class TestValidateQueryWithoutExecution:
         ):
             # Should suggest fully qualified names
             result = await validate_query_without_execution(
-                mock_connection, mock_cache, "SELECT * FROM test", database="db1", schema="schema1"
+                mock_connection,
+                mock_cache,
+                "SELECT * FROM test",
+                database="db1",
+                schema="schema1",
             )
             assert "hints" in result
             assert any("fully qualified" in hint for hint in result["hints"])
@@ -546,7 +604,9 @@ class TestGetQueryHistory:
         ]
         mock_connection.get_query_history.return_value = mock_history
 
-        result = await get_query_history(mock_connection, limit=10, only_successful=True)
+        result = await get_query_history(
+            mock_connection, limit=10, only_successful=True
+        )
 
         assert result["status"] == "success"
         assert len(result["history"]) == 1
@@ -583,7 +643,9 @@ class TestGetQueryHistory:
         ]
         mock_connection.get_query_history.return_value = mock_history
 
-        result = await get_query_history(mock_connection, limit=20, only_successful=False)
+        result = await get_query_history(
+            mock_connection, limit=20, only_successful=False
+        )
 
         assert result["status"] == "success"
         assert result["filter"] == "all"
