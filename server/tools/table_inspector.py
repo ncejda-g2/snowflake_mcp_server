@@ -8,17 +8,18 @@ from server.schema_cache import SchemaCache
 logger = logging.getLogger(__name__)
 
 
-async def get_table_schema(
+async def describe_table(
     cache: SchemaCache,
     database: str,
     schema: str,
     table: str,
 ) -> dict[str, Any]:
     """
-    Get detailed column information for a specific table from cache.
+    Get detailed column information for a specific table from cache only.
 
     This tool provides comprehensive schema information including
     column names, types, and constraints from the cache only.
+    Never queries Snowflake directly for table details.
 
     Note: To get sample data, use the execute_query tool separately.
 

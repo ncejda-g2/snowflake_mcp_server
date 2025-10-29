@@ -125,34 +125,39 @@ async def refresh_catalog_tool(
     )
 
 
-# Tool: Inspect Schemas
+# Tool: Show Tables
 @mcp.tool(
-    name="inspect_schemas",
-    description="""Browse the hierarchical structure of databases, schemas, and tables.
+    name="show_tables",
+    description="""Browse databases, schemas, and tables using pattern-based filtering.
 
-    This tool provides a structured view of available database objects with optional
-    filtering. Results are retrieved from the cache for fast access.
+    USE THIS WHEN: You want to explore what databases/schemas exist, or need to filter by exact patterns.
+    Like SQL's: SHOW TABLES IN database LIKE 'pattern'
 
-    NOTE: When filtering by database_pattern, column counts are omitted to reduce
-    response size and avoid token limits.
+    RETURNS: Hierarchical tree structure
+    - database → schema → list of tables (with column counts)
+
+    HOW IT WORKS:
+    - Auto-refreshes cache if expired/empty (requires Snowflake auth on first use)
+    - Uses cached data if available (no auth needed)
+    - Pattern matching is case-insensitive substring search
 
     Parameters:
-    - database_pattern: Filter databases by pattern (case-insensitive substring match)
-    - schema_pattern: Filter schemas by pattern
-    - table_pattern: Filter tables by pattern
+    - database_pattern: Filter databases (e.g., "SALES" matches "SALES_DB", "SALES_PROD")
+    - schema_pattern: Filter schemas (e.g., "PUBLIC")
+    - table_pattern: Filter tables (e.g., "CUSTOMER" matches "CUSTOMERS", "CUSTOMER_ORDERS")
 
     Examples:
-    - inspect_schemas() - Show all databases and their structure
-    - inspect_schemas(database_pattern="SALES") - Show only SALES-related databases
-    - inspect_schemas(table_pattern="CUSTOMER") - Find all customer tables
+    - show_tables() - Browse all databases
+    - show_tables(database_pattern="SALES") - Only SALES databases
+    - show_tables(schema_pattern="PUBLIC") - All PUBLIC schemas across databases
     """,
 )
-async def inspect_schemas_tool(
+async def show_tables_tool(
     database_pattern: str | None = None,
     schema_pattern: str | None = None,
     table_pattern: str | None = None,
 ) -> dict[str, Any]:
-    """List databases, schemas, and tables with optional filtering."""
+    """Browse databases, schemas, and tables hierarchically with pattern filtering."""
     try:
         initialize_resources()
     except Exception as e:
@@ -160,7 +165,7 @@ async def inspect_schemas_tool(
 
     if connection is None or cache is None:
         raise RuntimeError("Connection or cache initialization failed")
-    return await schema_inspector.inspect_schemas(
+    return await schema_inspector.show_tables(
         connection,
         cache,
         database_pattern=database_pattern,
@@ -169,24 +174,33 @@ async def inspect_schemas_tool(
     )
 
 
-# Tool: Search Tables
+# Tool: Find Tables
 @mcp.tool(
-    name="search_tables",
-    description="""Search for tables across all databases.
+    name="find_tables",
+    description="""Search for tables by keyword across ALL databases.
 
-    This tool searches table names and comments for the specified term.
-    Useful for finding tables when you don't know the exact location.
+    USE THIS WHEN: You don't know where a table is, but know part of its name or purpose.
+    Searches both table names AND table comments.
+
+    RETURNS: Flat list of matching tables
+    - [{database, schema, table, type, full_name, columns, comment}, ...]
+
+    HOW IT WORKS:
+    - Auto-refreshes cache if expired/empty (requires Snowflake auth on first use)
+    - Uses cached data if available (no auth needed)
+    - Searches table names and comments for the keyword (case-insensitive)
 
     Parameters:
-    - search_term: Term to search for (case-insensitive)
+    - search_term: Keyword to search for (case-insensitive)
 
     Examples:
-    - search_tables("customer") - Find all customer-related tables
-    - search_tables("revenue") - Find revenue tables
+    - find_tables("customer") - Find all customer-related tables across all databases
+    - find_tables("revenue") - Find revenue tables anywhere
+    - find_tables("staging") - Find tables with "staging" in name or comment
     """,
 )
-async def search_tables_tool(search_term: str) -> dict[str, Any]:
-    """Search for tables by name or comment."""
+async def find_tables_tool(search_term: str) -> dict[str, Any]:
+    """Search for tables by keyword in names and comments across all databases."""
     try:
         initialize_resources()
     except Exception as e:
@@ -194,18 +208,26 @@ async def search_tables_tool(search_term: str) -> dict[str, Any]:
 
     if connection is None or cache is None:
         raise RuntimeError("Connection or cache initialization failed")
-    return await schema_inspector.search_tables(connection, cache, search_term)
+    return await schema_inspector.find_tables(connection, cache, search_term)
 
 
-# Tool: Get Table Schema
+# Tool: Describe Table
 @mcp.tool(
-    name="get_table_schema",
-    description="""Get detailed schema information for a specific table from cache only.
+    name="describe_table",
+    description="""Get detailed column information for a specific table.
 
-    This tool provides comprehensive column information including names, types,
-    and constraints retrieved from the schema cache. It does NOT query Snowflake directly.
+    USE THIS WHEN: You need column names, types, and constraints to write a query.
+    Like SQL's: DESCRIBE TABLE database.schema.table
 
-    Note: To get sample data from the table, use the execute_query tool separately.
+    RETURNS: Detailed column information
+    - For each column: name, data_type, nullable, position, default, comment, is_primary_key
+
+    HOW IT WORKS:
+    - Looks up table in cache only (never queries Snowflake for table details)
+    - If table not in cache, returns error (use show_tables or find_tables first)
+    - No authentication required if cache is populated
+
+    Note: To get sample data rows, use execute_query tool separately.
 
     Parameters:
     - database: Database name
@@ -213,16 +235,16 @@ async def search_tables_tool(search_term: str) -> dict[str, Any]:
     - table: Table name
 
     Examples:
-    - get_table_schema("SALES_DB", "PUBLIC", "CUSTOMERS")
-    - get_table_schema("SALES_DB", "PUBLIC", "ORDERS")
+    - describe_table("SALES_DB", "PUBLIC", "CUSTOMERS")
+    - describe_table("GDC", "STAGING", "ADMIN__CATEGORIES")
     """,
 )
-async def get_table_schema_tool(
+async def describe_table_tool(
     database: str,
     schema: str,
     table: str,
 ) -> dict[str, Any]:
-    """Get detailed table schema information from cache."""
+    """Get detailed column information for a specific table from cache."""
     try:
         initialize_resources()
     except Exception as e:
@@ -230,7 +252,7 @@ async def get_table_schema_tool(
 
     if cache is None:
         raise RuntimeError("Cache initialization failed")
-    return await table_inspector.get_table_schema(
+    return await table_inspector.describe_table(
         cache,
         database=database,
         schema=schema,

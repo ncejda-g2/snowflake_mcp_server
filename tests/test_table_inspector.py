@@ -6,11 +6,11 @@ from pathlib import Path
 import pytest
 
 from server.schema_cache import ColumnInfo, SchemaCache, TableInfo
-from server.tools.table_inspector import get_table_schema
+from server.tools.table_inspector import describe_table
 
 
-class TestGetTableSchema:
-    """Test get_table_schema function - cache-only behavior."""
+class TestDescribeTable:
+    """Test describe_table function - cache-only behavior."""
 
     @pytest.fixture
     def temp_cache_dir(self):
@@ -57,13 +57,13 @@ class TestGetTableSchema:
         )
 
     @pytest.mark.asyncio
-    async def test_get_table_schema_from_cache(self, cache, sample_table_info):
-        """Test that get_table_schema returns data from cache."""
+    async def test_describe_table_from_cache(self, cache, sample_table_info):
+        """Test that describe_table returns data from cache."""
         # Add table to cache
         cache.add_table(sample_table_info)
 
         # Get table schema
-        result = await get_table_schema(
+        result = await describe_table(
             cache=cache,
             database="TEST_DB",
             schema="TEST_SCHEMA",
@@ -80,10 +80,10 @@ class TestGetTableSchema:
         assert len(result["columns"]) == 2
 
     @pytest.mark.asyncio
-    async def test_get_table_schema_not_in_cache(self, cache):
-        """Test that get_table_schema returns not_found when table not in cache."""
+    async def test_describe_table_not_in_cache(self, cache):
+        """Test that describe_table returns not_found when table not in cache."""
         # Get table schema for non-existent table
-        result = await get_table_schema(
+        result = await describe_table(
             cache=cache,
             database="MISSING_DB",
             schema="MISSING_SCHEMA",
@@ -98,13 +98,13 @@ class TestGetTableSchema:
         assert result["table"] == "MISSING_TABLE"
 
     @pytest.mark.asyncio
-    async def test_get_table_schema_column_details(self, cache, sample_table_info):
-        """Test that get_table_schema returns correct column details from cache."""
+    async def test_describe_table_column_details(self, cache, sample_table_info):
+        """Test that describe_table returns correct column details from cache."""
         # Add table to cache
         cache.add_table(sample_table_info)
 
         # Get table schema
-        result = await get_table_schema(
+        result = await describe_table(
             cache=cache,
             database="TEST_DB",
             schema="TEST_SCHEMA",
