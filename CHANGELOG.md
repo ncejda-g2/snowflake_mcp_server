@@ -5,6 +5,15 @@ All notable changes to the Snowflake MCP Server will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.4] - 2025-10-29
+
+### Changed
+- Removed redundant SQL query text from all query responses to reduce token usage
+  - Removed `sql` field from `query_metadata` in successful responses
+  - Removed `sql` field from validation error responses
+  - Removed `sql` field from execution error responses
+  - Agent already has the query in context, no need to echo it back
+
 ## [0.1.3] - 2025-10-29
 
 ### Fixed
