@@ -4,7 +4,6 @@ import logging
 from typing import Any
 
 from server.schema_cache import SchemaCache
-from server.snowflake_connection import SnowflakeConnection
 
 logger = logging.getLogger(__name__)
 
