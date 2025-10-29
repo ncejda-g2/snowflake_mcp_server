@@ -200,31 +200,29 @@ async def search_tables_tool(search_term: str) -> dict[str, Any]:
 # Tool: Get Table Schema
 @mcp.tool(
     name="get_table_schema",
-    description="""Get detailed schema information for a specific table.
+    description="""Get detailed schema information for a specific table from cache only.
 
     This tool provides comprehensive column information including names, types,
-    constraints, and optionally sample data.
+    and constraints retrieved from the schema cache. It does NOT query Snowflake directly.
+
+    Note: To get sample data from the table, use the execute_query tool separately.
 
     Parameters:
     - database: Database name
     - schema: Schema name
     - table: Table name
-    - include_sample: Include sample data rows (default: false)
-    - sample_rows: Number of sample rows to include (default: 5)
 
     Examples:
     - get_table_schema("SALES_DB", "PUBLIC", "CUSTOMERS")
-    - get_table_schema("SALES_DB", "PUBLIC", "ORDERS", include_sample=true)
+    - get_table_schema("SALES_DB", "PUBLIC", "ORDERS")
     """,
 )
 async def get_table_schema_tool(
     database: str,
     schema: str,
     table: str,
-    include_sample: bool = False,
-    sample_rows: int = 5,
 ) -> dict[str, Any]:
-    """Get detailed table schema information."""
+    """Get detailed table schema information from cache."""
     try:
         initialize_resources()
     except Exception as e:
@@ -238,8 +236,6 @@ async def get_table_schema_tool(
         database=database,
         schema=schema,
         table=table,
-        include_sample=include_sample,
-        sample_rows=sample_rows,
     )
 
 
