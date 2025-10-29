@@ -10,7 +10,7 @@ from server.tools.catalog_refresh import refresh_catalog
 logger = logging.getLogger(__name__)
 
 
-async def inspect_schemas(
+async def show_tables(
     connection: SnowflakeConnection,
     cache: SchemaCache,
     database_pattern: str | None = None,
@@ -18,16 +18,16 @@ async def inspect_schemas(
     table_pattern: str | None = None,
 ) -> dict[str, Any]:
     """
-    List available databases, schemas, and tables from cache.
+    Browse databases, schemas, and tables using pattern-based filtering.
 
     This tool provides a hierarchical view of the database structure,
-    with optional filtering by patterns.
+    with optional filtering by patterns. Similar to SQL's SHOW TABLES.
 
     NOTE: When database_pattern is used, column information is omitted
     to reduce response size and avoid token limits.
 
     Args:
-        connection: Active Snowflake connection
+        connection: Active Snowflake connection (for auto-refresh only)
         cache: Schema cache instance
         database_pattern: Filter databases by pattern (case-insensitive)
         schema_pattern: Filter schemas by pattern
@@ -171,16 +171,18 @@ async def inspect_schemas(
         return {"status": "error", "message": f"Failed to inspect schemas: {str(e)}"}
 
 
-async def search_tables(
+async def find_tables(
     connection: SnowflakeConnection, cache: SchemaCache, search_term: str
 ) -> dict[str, Any]:
     """
-    Search for tables across all databases.
+    Search for tables by keyword across all databases.
+
+    Searches both table names and comments for the specified keyword.
 
     Args:
-        connection: Active Snowflake connection
+        connection: Active Snowflake connection (for auto-refresh only)
         cache: Schema cache instance
-        search_term: Term to search for in table names and comments
+        search_term: Keyword to search for in table names and comments
 
     Returns:
         Dictionary with search results

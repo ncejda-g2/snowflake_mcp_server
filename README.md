@@ -12,7 +12,7 @@
 
   <p align="center">
     <a href="https://github.com/ncejda-g2/snowflake_mcp_server/releases">
-      <img src="https://img.shields.io/badge/version-v0.1.4-9b59b6" alt="Version" />
+      <img src="https://img.shields.io/badge/version-v0.1.5-9b59b6" alt="Version" />
     </a>
     <a href="./CHANGELOG.md">
       <img src="https://img.shields.io/badge/changelog-Latest%20Changes-blue" alt="Changelog" />
@@ -204,9 +204,9 @@ The server provides powerful tools for interacting with Snowflake:
 | Tool | Description |
 |------|-------------|
 | `refresh_catalog` | Scan and cache all database schemas |
-| `inspect_schemas` | Browse database structure |
-| `search_tables` | Search across all databases |
-| `get_table_schema` | View table columns & sample data |
+| `show_tables` | Browse database hierarchy with pattern filters (like SHOW TABLES) |
+| `find_tables` | Search for tables by keyword across all databases |
+| `describe_table` | View detailed column information (like DESCRIBE TABLE) |
 | `execute_query` | Run read-only SQL queries |
 | `execute_big_query_to_disk` | Stream large results to CSV |
 | `save_last_query_to_csv` | Export query results |
