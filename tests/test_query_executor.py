@@ -391,8 +391,8 @@ class TestExecuteQuery:
             mock_logger.error.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_execute_query_truncates_long_sql(self, mock_connection, mock_cache):
-        """Test that long SQL queries are truncated in metadata."""
+    async def test_execute_query_no_sql_in_metadata(self, mock_connection, mock_cache):
+        """Test that SQL is not included in query metadata (token usage optimization)."""
         long_sql = "SELECT * FROM test WHERE " + " AND ".join(
             [f"col{i} = {i}" for i in range(100)]
         )
@@ -411,8 +411,9 @@ class TestExecuteQuery:
             result = await execute_query(mock_connection, mock_cache, long_sql)
 
             assert result["status"] == "success"
-            assert len(result["query_metadata"]["sql"]) <= 503  # 500 + "..."
-            assert result["query_metadata"]["sql"].endswith("...")
+            # SQL should not be in metadata (agent already has it in context)
+            assert "sql" not in result["query_metadata"]
+            assert result["query_metadata"]["query_id"] == "long-sql-id"
 
 
 class TestValidateQueryWithoutExecution:

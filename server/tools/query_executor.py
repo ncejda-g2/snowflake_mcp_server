@@ -170,7 +170,6 @@ async def execute_query(
             "message": f"Query executed successfully, returned {len(result.data)} rows",
             "csv_export": {"available": csv_available, "message": csv_message},
             "query_metadata": {
-                "sql": sql[:500] + ("..." if len(sql) > 500 else ""),
                 "database_context": database,
                 "schema_context": schema,
                 "query_id": result.query_id,
@@ -189,7 +188,6 @@ async def execute_query(
             "status": "error",
             "message": str(e),
             "error_type": "validation_error",
-            "sql": sql[:500] + ("..." if len(sql) > 500 else ""),
         }
     except Exception as e:
         logger.error(f"Query execution failed: {str(e)}")
@@ -197,7 +195,6 @@ async def execute_query(
             "status": "error",
             "message": f"Query execution failed: {str(e)}",
             "error_type": "execution_error",
-            "sql": sql[:500] + ("..." if len(sql) > 500 else ""),
         }
 
 
