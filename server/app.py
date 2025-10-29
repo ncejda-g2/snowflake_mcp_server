@@ -228,10 +228,9 @@ async def get_table_schema_tool(
     except Exception as e:
         return {"status": "error", "message": f"Failed to initialize: {str(e)}"}
 
-    if connection is None or cache is None:
-        raise RuntimeError("Connection or cache initialization failed")
+    if cache is None:
+        raise RuntimeError("Cache initialization failed")
     return await table_inspector.get_table_schema(
-        connection,
         cache,
         database=database,
         schema=schema,

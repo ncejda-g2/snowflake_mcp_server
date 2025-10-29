@@ -2,12 +2,10 @@
 
 import tempfile
 from pathlib import Path
-from unittest.mock import AsyncMock, Mock
 
 import pytest
 
 from server.schema_cache import ColumnInfo, SchemaCache, TableInfo
-from server.snowflake_connection import SnowflakeConnection
 from server.tools.table_inspector import get_table_schema
 
 
@@ -24,14 +22,6 @@ class TestGetTableSchema:
     def cache(self, temp_cache_dir):
         """Create a SchemaCache instance with temporary directory."""
         return SchemaCache(ttl_days=5, cache_dir=temp_cache_dir)
-
-    @pytest.fixture
-    def mock_connection(self):
-        """Create a mock SnowflakeConnection."""
-        conn = Mock(spec=SnowflakeConnection)
-        conn.execute_query = Mock()
-        conn.get_table_columns = Mock()
-        return conn
 
     @pytest.fixture
     def sample_table_info(self):
@@ -67,16 +57,13 @@ class TestGetTableSchema:
         )
 
     @pytest.mark.asyncio
-    async def test_get_table_schema_from_cache(
-        self, cache, mock_connection, sample_table_info
-    ):
+    async def test_get_table_schema_from_cache(self, cache, sample_table_info):
         """Test that get_table_schema returns data from cache."""
         # Add table to cache
         cache.add_table(sample_table_info)
 
         # Get table schema
         result = await get_table_schema(
-            connection=mock_connection,
             cache=cache,
             database="TEST_DB",
             schema="TEST_SCHEMA",
@@ -92,22 +79,11 @@ class TestGetTableSchema:
         assert result["column_count"] == 2
         assert len(result["columns"]) == 2
 
-        # Verify connection was NOT used to query Snowflake
-        mock_connection.execute_query.assert_not_called()
-        mock_connection.get_table_columns.assert_not_called()
-
     @pytest.mark.asyncio
-    async def test_get_table_schema_not_in_cache(self, cache, mock_connection):
+    async def test_get_table_schema_not_in_cache(self, cache):
         """Test that get_table_schema returns not_found when table not in cache."""
-        # Configure mock to simulate what would happen if queried
-        # This should NOT be called
-        mock_connection.get_table_columns.return_value = [
-            {"name": "ID", "type": "NUMBER"}
-        ]
-
         # Get table schema for non-existent table
         result = await get_table_schema(
-            connection=mock_connection,
             cache=cache,
             database="MISSING_DB",
             schema="MISSING_SCHEMA",
@@ -121,21 +97,14 @@ class TestGetTableSchema:
         assert result["schema"] == "MISSING_SCHEMA"
         assert result["table"] == "MISSING_TABLE"
 
-        # CRITICAL: Verify connection was NOT used to query Snowflake
-        mock_connection.get_table_columns.assert_not_called()
-        mock_connection.execute_query.assert_not_called()
-
     @pytest.mark.asyncio
-    async def test_get_table_schema_column_details(
-        self, cache, mock_connection, sample_table_info
-    ):
+    async def test_get_table_schema_column_details(self, cache, sample_table_info):
         """Test that get_table_schema returns correct column details from cache."""
         # Add table to cache
         cache.add_table(sample_table_info)
 
         # Get table schema
         result = await get_table_schema(
-            connection=mock_connection,
             cache=cache,
             database="TEST_DB",
             schema="TEST_SCHEMA",

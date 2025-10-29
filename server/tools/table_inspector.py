@@ -10,7 +10,6 @@ logger = logging.getLogger(__name__)
 
 
 async def get_table_schema(
-    connection: SnowflakeConnection,  # noqa: ARG001
     cache: SchemaCache,
     database: str,
     schema: str,
@@ -25,7 +24,6 @@ async def get_table_schema(
     Note: To get sample data, use the execute_query tool separately.
 
     Args:
-        connection: Active Snowflake connection (not used, kept for API compatibility)
         cache: Schema cache instance
         database: Database name
         schema: Schema name
