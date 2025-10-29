@@ -144,17 +144,20 @@ class QueryValidator:
             Tuple of (QueryType, first_keyword_text)
         """
         # Get first meaningful keyword token
+        # Prioritize statement-level keywords (CTE, DML, DDL) over generic keywords
         first_keyword = None
         for token in statement.flatten():
-            if token.ttype in (
-                T.Keyword.DML,
-                T.Keyword.DDL,
-                T.Keyword,
-                T.Keyword.CTE,
-                T.Keyword.Order,
-            ):
+            # Check for statement-level keywords first
+            if token.ttype in (T.Keyword.CTE, T.Keyword.DML, T.Keyword.DDL):
                 first_keyword = token.value.upper().strip()
                 break
+            # Fall back to generic keywords if no statement-level keyword found yet
+            if not first_keyword and token.ttype in (T.Keyword, T.Keyword.Order):
+                candidate = token.value.upper().strip()
+                # Only accept statement-starting keywords, not structural keywords like AS, ON, etc
+                if candidate in cls.READ_OPERATIONS | cls.WRITE_OPERATIONS:
+                    first_keyword = candidate
+                    break
 
         if not first_keyword:
             return QueryType.UNKNOWN, "UNKNOWN"
