@@ -12,7 +12,7 @@
 
   <p align="center">
     <a href="https://github.com/ncejda-g2/snowflake_mcp_server/releases">
-      <img src="https://img.shields.io/badge/version-v0.1.4-9b59b6" alt="Version" />
+      <img src="https://img.shields.io/badge/version-v0.1.5-9b59b6" alt="Version" />
     </a>
     <a href="./CHANGELOG.md">
       <img src="https://img.shields.io/badge/changelog-Latest%20Changes-blue" alt="Changelog" />
