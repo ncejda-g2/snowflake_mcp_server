@@ -204,9 +204,9 @@ The server provides powerful tools for interacting with Snowflake:
 | Tool | Description |
 |------|-------------|
 | `refresh_catalog` | Scan and cache all database schemas |
-| `inspect_schemas` | Browse database structure |
-| `search_tables` | Search across all databases |
-| `get_table_schema` | View table columns & sample data |
+| `show_tables` | Browse database hierarchy with pattern filters (like SHOW TABLES) |
+| `find_tables` | Search for tables by keyword across all databases |
+| `describe_table` | View detailed column information (like DESCRIBE TABLE) |
 | `execute_query` | Run read-only SQL queries |
 | `execute_big_query_to_disk` | Stream large results to CSV |
 | `save_last_query_to_csv` | Export query results |
