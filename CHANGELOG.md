@@ -40,7 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Validates README version badge matches pyproject.toml
   - Requires CHANGELOG.md update for all PRs
 
-## [0.1.1] - 2025-01-26
+## [0.1.1] - 2025-09-26
 
 ### Added
 - Always return absolute paths in file export responses for clarity
@@ -53,7 +53,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - File path resolution issues where relative paths were ambiguous
 - Tool descriptions now clarify that relative paths are resolved from MCP server directory
 
-## [0.1.0] - 2025-01-09
+## [0.1.0] - 2025-08-19
 
 ### Added
 - Initial release of Snowflake MCP Server
