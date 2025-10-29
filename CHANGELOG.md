@@ -5,6 +5,25 @@ All notable changes to the Snowflake MCP Server will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.5] - 2025-10-29
+
+### Fixed
+- `get_table_schema` now cache-only, no longer requires Snowflake authentication
+  - Fixed bug where function queried Snowflake directly when table not found in cache
+  - Now returns "not found in cache" error instead of attempting to authenticate
+  - Only tools that should require auth: `execute_query`, `refresh_catalog`, `execute_big_query_to_disk`
+
+### Removed
+- Removed `include_sample` parameter from `get_table_schema`
+  - Users should use `execute_query` tool separately to get sample data
+  - Ensures the function remains truly cache-only
+- Removed unused `describe_table` function (111 lines of dead code)
+
+### Added
+- Comprehensive unit tests for cache-only behavior of `get_table_schema`
+  - Verifies no Snowflake queries are made when table not in cache
+  - 3 new tests with 100% pass rate
+
 ## [0.1.4] - 2025-10-29
 
 ### Changed
