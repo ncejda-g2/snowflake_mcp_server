@@ -12,6 +12,7 @@ import sqlparse
 from server.constants import CSV_DELIMITER, CSV_INCLUDE_HEADERS, CSV_NULL_VALUE
 from server.schema_cache import SchemaCache
 from server.snowflake_connection import QueryValidator, SnowflakeConnection
+from server.tools.catalog_refresh import refresh_catalog
 
 logger = logging.getLogger(__name__)
 
@@ -134,16 +135,16 @@ async def execute_big_query_to_disk(
     if not is_valid:
         return {"status": "error", "message": error_msg, "query_type": str(query_type)}
 
-    # Check cache is populated (required before queries)
-    if cache.is_empty():
-        return {
-            "status": "error",
-            "message": "Schema cache is empty. Please run refresh_catalog first.",
-            "action_required": "refresh_catalog",
-        }
-
-    if cache.is_expired():
-        logger.warning("Schema cache is expired, consider refreshing")
+    # Check cache and auto-refresh if needed
+    if cache.is_expired() or cache.is_empty():
+        logger.info("Cache is expired or empty, refreshing catalog...")
+        refresh_result = await refresh_catalog(connection, cache, force=True)
+        if refresh_result["status"] != "success":
+            return {
+                "status": "error",
+                "message": "Failed to refresh catalog",
+                "error": refresh_result.get("message"),
+            }
 
     # Expand the path if it contains ~ or environment variables
     # Convert relative paths to absolute paths based on current working directory

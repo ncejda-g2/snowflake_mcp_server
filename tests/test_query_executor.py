@@ -121,20 +121,64 @@ class TestExecuteQuery:
             assert result["query_type"] == "QueryType.UNKNOWN"
 
     @pytest.mark.asyncio
-    async def test_execute_query_empty_cache(self, mock_connection, mock_cache):
-        """Test execute_query with empty cache."""
+    async def test_execute_query_empty_cache(
+        self, mock_connection, mock_cache, mock_query_result
+    ):
+        """Test execute_query with empty cache triggers auto-refresh."""
         mock_cache.is_empty.return_value = True
+        mock_connection.execute_query.return_value = mock_query_result
 
-        with patch.object(
-            QueryValidator, "validate", return_value=(True, None, QueryType.SELECT)
+        with (
+            patch.object(
+                QueryValidator, "validate", return_value=(True, None, QueryType.SELECT)
+            ),
+            patch(
+                "server.tools.query_executor.refresh_catalog"
+            ) as mock_refresh_catalog,
         ):
+            # Mock successful refresh
+            mock_refresh_catalog.return_value = {"status": "success"}
+
             result = await execute_query(
                 mock_connection, mock_cache, "SELECT * FROM test"
             )
 
+            # Verify refresh was called
+            mock_refresh_catalog.assert_called_once_with(
+                mock_connection, mock_cache, force=True
+            )
+            # Verify query succeeded after refresh
+            assert result["status"] == "success"
+
+    @pytest.mark.asyncio
+    async def test_execute_query_empty_cache_refresh_fails(
+        self, mock_connection, mock_cache
+    ):
+        """Test execute_query with empty cache when refresh fails."""
+        mock_cache.is_empty.return_value = True
+
+        with (
+            patch.object(
+                QueryValidator, "validate", return_value=(True, None, QueryType.SELECT)
+            ),
+            patch(
+                "server.tools.query_executor.refresh_catalog"
+            ) as mock_refresh_catalog,
+        ):
+            # Mock failed refresh
+            mock_refresh_catalog.return_value = {
+                "status": "error",
+                "message": "Connection failed",
+            }
+
+            result = await execute_query(
+                mock_connection, mock_cache, "SELECT * FROM test"
+            )
+
+            # Verify error is returned when refresh fails
             assert result["status"] == "error"
-            assert "Schema cache is empty" in result["message"]
-            assert result["action_required"] == "refresh_catalog"
+            assert "Failed to refresh catalog" in result["message"]
+            assert result["error"] == "Connection failed"
 
     @pytest.mark.asyncio
     async def test_execute_query_success(
@@ -184,27 +228,35 @@ class TestExecuteQuery:
             assert get_last_query_cache() is None
 
     @pytest.mark.asyncio
-    async def test_execute_query_expired_cache_warning(
+    async def test_execute_query_expired_cache_triggers_refresh(
         self, mock_connection, mock_cache, mock_query_result
     ):
-        """Test query with expired cache logs warning."""
+        """Test query with expired cache triggers auto-refresh."""
         mock_cache.is_expired.return_value = True
+        mock_cache.is_empty.return_value = False
         mock_connection.execute_query.return_value = mock_query_result
 
         with (
             patch.object(
                 QueryValidator, "validate", return_value=(True, None, QueryType.SELECT)
             ),
-            patch("server.tools.query_executor.logger") as mock_logger,
+            patch(
+                "server.tools.query_executor.refresh_catalog"
+            ) as mock_refresh_catalog,
         ):
+            # Mock successful refresh
+            mock_refresh_catalog.return_value = {"status": "success"}
+
             result = await execute_query(
                 mock_connection, mock_cache, "SELECT * FROM test"
             )
 
-            assert result["status"] == "success"
-            mock_logger.warning.assert_called_with(
-                "Schema cache is expired, consider refreshing"
+            # Verify refresh was called
+            mock_refresh_catalog.assert_called_once_with(
+                mock_connection, mock_cache, force=True
             )
+            # Verify query succeeded after refresh
+            assert result["status"] == "success"
 
     @pytest.mark.asyncio
     async def test_execute_query_large_cache_exceeded(
