@@ -12,7 +12,7 @@
 
   <p align="center">
     <a href="https://github.com/ncejda-g2/snowflake_mcp_server/releases">
-      <img src="https://img.shields.io/badge/version-v0.1.1-9b59b6" alt="Version" />
+      <img src="https://img.shields.io/badge/version-v0.1.2-9b59b6" alt="Version" />
     </a>
     <a href="./CHANGELOG.md">
       <img src="https://img.shields.io/badge/changelog-Latest%20Changes-blue" alt="Changelog" />
@@ -64,7 +64,7 @@ Snowflake MCP Server bridges the gap between your Snowflake data warehouse and A
 
 ```bash
 # Clone the repository
-git clone https://github.com/ncejda-g2/snowflake_mcp_server
+git clone git@github.com:ncejda-g2/snowflake_mcp_server.git
 cd snowflake_mcp_server
 
 # Create and activate virtual environment
