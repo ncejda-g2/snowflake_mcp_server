@@ -9,6 +9,92 @@ permissions:
   issues: write
 
 jobs:
+  validate-pr:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Need full history to compare versions
+
+      - name: Checkout main branch
+        run: git fetch origin main:main
+
+      - name: Check version bump
+        id: version-check
+        run: |
+          # Get version from PR branch
+          PR_VERSION=$(grep -oP 'version = "\K[^"]+' pyproject.toml | head -1)
+
+          # Get version from main branch
+          MAIN_VERSION=$(git show main:pyproject.toml | grep -oP 'version = "\K[^"]+' | head -1)
+
+          echo "Main version: $MAIN_VERSION"
+          echo "PR version: $PR_VERSION"
+
+          # Compare versions
+          if [ "$PR_VERSION" = "$MAIN_VERSION" ]; then
+            echo "❌ Version not bumped! Please update version in pyproject.toml"
+            echo "Current: $MAIN_VERSION"
+            exit 1
+          fi
+
+          # Simple version comparison (works for semver)
+          if [ "$(printf '%s\n' "$MAIN_VERSION" "$PR_VERSION" | sort -V | tail -1)" != "$PR_VERSION" ]; then
+            echo "❌ PR version must be greater than main version"
+            echo "Main: $MAIN_VERSION → PR: $PR_VERSION"
+            exit 1
+          fi
+
+          echo "✅ Version bumped correctly: $MAIN_VERSION → $PR_VERSION"
+
+      - name: Check README version badge
+        run: |
+          # Get version from pyproject.toml
+          PR_VERSION=$(grep -oP 'version = "\K[^"]+' pyproject.toml | head -1)
+
+          # Extract version from README badge
+          README_VERSION=$(grep -oP 'version-v\K[0-9]+\.[0-9]+\.[0-9]+' README.md || echo "")
+
+          echo "pyproject.toml version: $PR_VERSION"
+          echo "README badge version: $README_VERSION"
+
+          if [ "$README_VERSION" != "$PR_VERSION" ]; then
+            echo "❌ README version badge does not match pyproject.toml version!"
+            echo "Expected: v$PR_VERSION"
+            echo "Found: v$README_VERSION"
+            echo "Please update the version badge in README.md to match pyproject.toml"
+            exit 1
+          fi
+
+          echo "✅ README version badge matches pyproject.toml"
+
+      - name: Check CHANGELOG update
+        run: |
+          # Check if CHANGELOG.md exists
+          if [ ! -f "CHANGELOG.md" ]; then
+            echo "❌ CHANGELOG.md not found!"
+            exit 1
+          fi
+
+          # Check if CHANGELOG.md was modified in this PR
+          git diff --name-only origin/main...HEAD | grep -q "CHANGELOG.md"
+
+          if [ $? -ne 0 ]; then
+            echo "❌ CHANGELOG.md was not updated!"
+            echo "Please add your changes to CHANGELOG.md"
+            exit 1
+          fi
+
+          echo "✅ CHANGELOG.md was updated"
+
+      - name: All validation checks passed
+        run: |
+          echo "✅ All PR validation checks passed!"
+          echo "- Version bumped"
+          echo "- README version badge updated"
+          echo "- CHANGELOG updated"
+
   lint:
     runs-on: ubuntu-latest
     steps:

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "snowflake_mcp_server"
-version = "0.1.1"
+version = "0.1.2"
 description = "A Snowflake read-only MCP server with external browser authentication (SSO)"
 authors = [{ name = "Nicholas Cejda", email = "ncejda@g2.com" }]
 requires-python = ">=3.12"
