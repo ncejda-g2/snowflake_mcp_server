@@ -5,6 +5,32 @@ All notable changes to the Snowflake MCP Server will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.3] - 2025-10-29
+
+### Fixed
+- CTE queries with LATERAL FLATTEN no longer incorrectly rejected
+  - Fixed keyword detection logic that was identifying 'AS' as the first keyword instead of 'WITH'
+  - Prioritized statement-level keywords (CTE, DML, DDL) over generic structural keywords
+  - Added regression test for CTE with LATERAL FLATTEN pattern
+
+## [0.1.2] - 2025-10-29
+
+### Fixed
+- Cache expiration now properly enforced with auto-refresh
+  - Previously, expired cache only logged a warning and continued executing queries with stale metadata
+  - Now `execute_query` and `execute_big_query_to_disk` auto-refresh expired caches before execution
+  - Matches the behavior already implemented in `schema_inspector`
+  - Updated tests to verify auto-refresh behavior on cache expiration
+
+### Changed
+- Updated README git clone example to use SSH URL instead of HTTPS
+
+### Added
+- GitHub Actions workflow for PR validation
+  - Enforces version bump in pyproject.toml
+  - Validates README version badge matches pyproject.toml
+  - Requires CHANGELOG.md update for all PRs
+
 ## [0.1.1] - 2025-01-26
 
 ### Added
