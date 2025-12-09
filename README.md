@@ -54,11 +54,16 @@ Snowflake MCP Server bridges the gap between your Snowflake data warehouse and A
 ## Features
 
 - 🔒 **Strict Read-Only Access**: Multiple layers of protection against write operations
-- 🔑 **External Browser Authentication**: Uses Snowflake's secure browser-based SSO
+- 🔑 **Flexible Authentication**:
+  - Browser-based SSO for interactive use
+  - Okta SSO for organizations using Okta
+  - Username/password for simple container deployments
+  - Key pair (RSA) for secure production deployments
 - 💾 **Smart Caching**: 5-day schema cache for fast metadata access, reducing generic Snowflake schema queries and credit usage
 - 📄 **CSV Export**: Export query results directly to CSV files
 - 🛡️ **Query Validation**: Comprehensive SQL validation before execution
 - 🎯 **Responsible Token Management**: Lightweight outputs to minimize token usage
+- 🐳 **Container-Ready**: Works in Docker, Kubernetes, and other containerized environments
 
 ## 🚀 Quick Start
 
@@ -196,6 +201,69 @@ Replace:
 - `YOUR_WAREHOUSE`: Your Snowflake warehouse name
 
 </details>
+
+## Authentication Methods
+
+The server supports four authentication methods:
+
+### 1. External Browser (SSO) - Default
+Perfect for interactive use on your local machine:
+- Requires GUI environment with web browser
+- Uses your organization's SSO
+- No additional setup required
+- **Default method** (no configuration needed)
+
+### 2. Okta SSO - For Organizations Using Okta
+Direct Okta authentication for SSO users:
+- ✅ Works with Okta-based SSO
+- ✅ Opens browser for Okta login
+- ✅ Can bypass certain network policy restrictions
+- ⚠️ Requires GUI environment with web browser
+
+**Quick setup:**
+```bash
+export SNOWFLAKE_AUTHENTICATOR="https://your-company.okta.com"
+```
+
+Example for G2:
+```bash
+export SNOWFLAKE_AUTHENTICATOR="https://g2crowd.okta.com"
+```
+
+### 3. Username/Password - Simplest for Containers ⭐
+**Recommended if you don't have admin access:**
+- ✅ Works in containers without browser
+- ✅ No admin privileges required
+- ✅ Simple setup - just provide password
+- ⚠️ Less secure than key pair (store password securely)
+
+**Quick setup:**
+```bash
+export SNOWFLAKE_AUTHENTICATOR="snowflake"
+export SNOWFLAKE_PASSWORD="your-password"
+```
+
+### 4. Key Pair Authentication - Most Secure for Containers
+Best practice for production deployments:
+- ✅ Works in containers without browser
+- ✅ Enhanced security with RSA keys
+- ✅ Best practice for service accounts
+- ⚠️ Requires admin access to set up keys
+
+**📖 [Complete Key Pair Setup Guide](./docs/KEY_PAIR_AUTH_SETUP.md)**
+
+**Quick setup:**
+```bash
+# Generate key pair
+openssl genrsa -out snowflake_key.pem 4096
+openssl rsa -in snowflake_key.pem -pubout -out snowflake_key.pub
+
+# Configure Snowflake (format and upload public key - see guide for details)
+
+# Use with MCP server
+export SNOWFLAKE_AUTHENTICATOR="snowflake_jwt"
+export SNOWFLAKE_PRIVATE_KEY_PATH="/path/to/snowflake_key.pem"
+```
 
 ## Available Commands
 

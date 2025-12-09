@@ -10,6 +10,7 @@ from server.config import Config
 from server.schema_cache import SchemaCache
 from server.snowflake_connection import SnowflakeConnection
 from server.tools import (
+    auth_refresh,
     catalog_refresh,
     execute_big_query_to_disk,
     query_executor,
@@ -123,6 +124,51 @@ async def refresh_catalog_tool(
     return await catalog_refresh.refresh_catalog(
         connection, cache, force=force, resume=resume
     )
+
+
+# Tool: Refresh Snowflake Authentication
+@mcp.tool(
+    name="refresh_snowflake_auth",
+    description="""Refresh Snowflake authentication when your session expires.
+
+    This tool re-authenticates with Snowflake using your configured authentication method.
+    For browser-based SSO (externalbrowser or Okta), this will open a browser window for authentication.
+
+    Use this tool when:
+    - You receive authentication errors
+    - Your session token has expired
+    - You need to refresh your credentials
+
+    The tool will:
+    - Attempt to connect with the configured authenticator
+    - For externalbrowser: Open your browser for SSO authentication
+    - For Okta URL: Require username and password
+    - Store the session token for reuse
+    - Return success status and current user info
+
+    Note: In containerized environments, browser-based auth requires network access
+    and the ability to open a browser on your local machine.
+    """,
+)
+async def refresh_auth_tool() -> dict[str, Any]:
+    """Refresh Snowflake authentication."""
+    global connection
+
+    try:
+        result = auth_refresh.refresh_snowflake_auth(connection, config)
+
+        # If authentication was successful, reset the connection so it gets reinitialized
+        if result.get("status") == "success":
+            if connection:
+                connection.disconnect()
+            connection = None
+
+        return result
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Unexpected error during authentication refresh: {str(e)}"
+        }
 
 
 # Tool: Show Tables

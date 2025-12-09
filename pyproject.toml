@@ -10,7 +10,7 @@ authors = [{ name = "Nicholas Cejda", email = "ncejda@g2.com" }]
 requires-python = ">=3.12"
 dependencies = [
   "fastmcp>=2.9.2",
-  "snowflake-connector-python>=3.0.0",
+  "snowflake-connector-python[secure-local-storage]>=3.0.0",
   "pydantic>=2.0.0",
   "httpx>=0.28.1",
   "cachetools>=5.0.0",
@@ -33,7 +33,7 @@ dev = [
 
 [project.scripts]
 server = "server.app:main"
-snowflake-mcp = "main:main"
+snowflake-mcp = "server.app:main"
 
 [tool.ruff]
 target-version = "py312"

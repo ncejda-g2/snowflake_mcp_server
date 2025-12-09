@@ -1,15 +1,19 @@
 """Snowflake connection management with strict read-only enforcement."""
 
 import logging
+import os
 import re
 import time
 from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 
 import snowflake.connector
 import sqlparse
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import serialization
 from snowflake.connector import DictCursor
 from snowflake.connector.connection import SnowflakeConnection as SnowflakeConn
 from snowflake.connector.errors import ProgrammingError
@@ -286,32 +290,120 @@ class SnowflakeConnection:
         self.validator = QueryValidator()
         self._connection_metadata: dict = {}
 
+    def _load_private_key(self) -> bytes:
+        """
+        Load and decode the private key for key pair authentication.
+
+        Returns:
+            bytes: The private key in DER format
+
+        Raises:
+            ValueError: If private key path is not configured
+            FileNotFoundError: If private key file doesn't exist
+            Exception: If private key cannot be loaded
+        """
+        if not self.config.private_key_path:
+            raise ValueError("Private key path not configured")
+
+        key_path = Path(self.config.private_key_path).expanduser()
+        if not key_path.exists():
+            raise FileNotFoundError(f"Private key file not found: {key_path}")
+
+        try:
+            with open(key_path, "rb") as key_file:
+                private_key_data = key_file.read()
+
+            # Load the private key
+            if self.config.private_key_passphrase:
+                password = self.config.private_key_passphrase.encode()
+            else:
+                password = None
+
+            private_key = serialization.load_pem_private_key(
+                private_key_data, password=password, backend=default_backend()
+            )
+
+            # Convert to DER format (required by Snowflake connector)
+            private_key_der = private_key.private_bytes(
+                encoding=serialization.Encoding.DER,
+                format=serialization.PrivateFormat.PKCS8,
+                encryption_algorithm=serialization.NoEncryption(),
+            )
+
+            return private_key_der
+
+        except Exception as e:
+            self.logger.error(f"Failed to load private key: {str(e)}")
+            raise
+
     def connect(self) -> None:
         """
-        Establish read-only connection to Snowflake using PAT authentication.
+        Establish read-only connection to Snowflake.
+
+        Supports four authentication methods:
+        - externalbrowser: Browser-based SSO (requires GUI environment)
+        - snowflake_jwt: Key pair authentication (works in containers, requires admin setup)
+        - snowflake: Username/password authentication (works in containers, no admin needed)
+        - Okta SSO: Pass Okta URL like 'https://mycompany.okta.com' (requires browser)
 
         Raises:
             Exception: If connection fails
         """
         try:
-            self.logger.info(f"Connecting to Snowflake account: {self.config.account}")
+            # Check if using Okta URL authentication
+            is_okta_url = self.config.authenticator.startswith("https://") and ".okta.com" in self.config.authenticator
 
-            # Connect using external browser authentication
-            self.connection = snowflake.connector.connect(
-                account=self.config.account,
-                user=self.config.username,
-                authenticator="externalbrowser",
-                role=self.config.role,
-                warehouse=self.config.warehouse,
-                client_session_keep_alive=True,
-                # Set reasonable timeouts
-                network_timeout=30,
-                login_timeout=10,
-                # Disable cloud provider credential auto-detection
-                # This prevents unnecessary checks for AWS/Azure/GCP metadata endpoints
-                ocsp_fail_open=False,
-                validate_default_parameters=True,
+            # Validate Okta URL authentication requirements
+            if is_okta_url:
+                if not self.config.password:
+                    raise ValueError(
+                        "SNOWFLAKE_PASSWORD is required when using Okta URL authentication. "
+                        "Native Okta authentication requires username and password. "
+                        "If you want browser-based SSO without a password, use SNOWFLAKE_AUTHENTICATOR='externalbrowser' instead."
+                    )
+
+            self.logger.info(
+                f"Connecting to Snowflake account: {self.config.account} "
+                f"using {self.config.authenticator} authentication"
             )
+
+            # Base connection parameters
+            conn_params = {
+                "account": self.config.account,
+                "user": self.config.username,
+                "role": self.config.role,
+                "warehouse": self.config.warehouse,
+                "client_session_keep_alive": True,
+                "client_store_temporary_credential": True,  # Enable token caching
+                "network_timeout": 30,
+                "login_timeout": 10,
+                "ocsp_fail_open": False,
+                "validate_default_parameters": True,
+            }
+
+            # Add authentication-specific parameters
+            if self.config.authenticator == "snowflake_jwt":
+                # Key pair authentication - works in containers, requires admin setup
+                private_key = self._load_private_key()
+                conn_params["private_key"] = private_key
+                self.logger.info("Using key pair authentication")
+            elif self.config.authenticator == "snowflake":
+                # Username/password authentication - works in containers, no admin needed
+                conn_params["password"] = self.config.password
+                self.logger.info("Using username/password authentication")
+            elif self.config.authenticator.startswith("https://") and ".okta.com" in self.config.authenticator:
+                # Native Okta authentication - requires username AND password
+                # Does NOT support MFA, only for programmatic access
+                conn_params["authenticator"] = self.config.authenticator
+                conn_params["password"] = self.config.password
+                self.logger.info(f"Using native Okta authentication: {self.config.authenticator}")
+            else:
+                # External browser authentication - requires GUI
+                conn_params["authenticator"] = "externalbrowser"
+                self.logger.info("Using external browser authentication (requires GUI)")
+
+            # Establish connection
+            self.connection = snowflake.connector.connect(**conn_params)
 
             # Set up session for safety
             self._setup_read_only_session()
