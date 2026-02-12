@@ -1,7 +1,6 @@
 """Configuration management for Snowflake MCP Server."""
 
 import os
-from typing import Optional
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -18,7 +17,7 @@ class Config(BaseModel):
     role: str = Field(description="Snowflake role to use", default="ML_DEVELOPER")
 
     # Key-pair auth (headless) — when set, takes priority over externalbrowser
-    credential_file: Optional[str] = Field(
+    credential_file: str | None = Field(
         default=None,
         description="Path to JSON credential file with key-pair auth (user, account, private_key_b64, private_key_passphrase, etc.)",
     )

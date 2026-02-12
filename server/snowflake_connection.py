@@ -305,6 +305,7 @@ class SnowflakeConnection:
 
     def _load_credential_file(self) -> dict:
         """Load and parse the JSON credential file."""
+        assert self.config.credential_file is not None
         cred_path = Path(self.config.credential_file)
         if not cred_path.is_absolute():
             cred_path = Path.cwd() / cred_path
