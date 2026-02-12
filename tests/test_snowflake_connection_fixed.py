@@ -259,6 +259,7 @@ class TestSnowflakeConnection:
         config.warehouse = "TEST_WH"
         config.role = "TEST_ROLE"
         config.debug = False
+        config.credential_file = None
         return config
 
     @pytest.fixture
