@@ -1,6 +1,7 @@
 """Configuration management for Snowflake MCP Server."""
 
 import os
+from typing import Optional
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -15,6 +16,12 @@ class Config(BaseModel):
     username: str = Field(description="Snowflake username")
     warehouse: str = Field(description="Compute warehouse to use")
     role: str = Field(description="Snowflake role to use", default="ML_DEVELOPER")
+
+    # Key-pair auth (headless) — when set, takes priority over externalbrowser
+    credential_file: Optional[str] = Field(
+        default=None,
+        description="Path to JSON credential file with key-pair auth (user, account, private_key_b64, private_key_passphrase, etc.)",
+    )
 
     # MCP server settings
     host: str = Field(default="0.0.0.0", description="Host for HTTP transport")
@@ -93,6 +100,7 @@ class Config(BaseModel):
             username=username,
             warehouse=warehouse,
             role=role,
+            credential_file=os.getenv("SNOWFLAKE_CREDENTIAL_FILE"),
             host=os.getenv("MCP_HOST", "0.0.0.0"),
             port=int(os.getenv("MCP_PORT", "8000")),
             transport=os.getenv("MCP_TRANSPORT", "stdio"),

@@ -1,5 +1,7 @@
 """Snowflake connection management with strict read-only enforcement."""
 
+import base64
+import json
 import logging
 import re
 import time
@@ -7,9 +9,11 @@ from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 
 import snowflake.connector
 import sqlparse
+from cryptography.hazmat.primitives import serialization
 from snowflake.connector import DictCursor
 from snowflake.connector.connection import SnowflakeConnection as SnowflakeConn
 from snowflake.connector.errors import ProgrammingError
@@ -286,9 +290,34 @@ class SnowflakeConnection:
         self.validator = QueryValidator()
         self._connection_metadata: dict = {}
 
+    @staticmethod
+    def _load_private_key(private_key_b64: str, passphrase: str) -> bytes:
+        """Decode a base64 PEM private key to DER bytes for Snowflake."""
+        pem_data = base64.b64decode(private_key_b64)
+        private_key = serialization.load_pem_private_key(
+            pem_data, password=passphrase.encode()
+        )
+        return private_key.private_bytes(
+            encoding=serialization.Encoding.DER,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption(),
+        )
+
+    def _load_credential_file(self) -> dict:
+        """Load and parse the JSON credential file."""
+        cred_path = Path(self.config.credential_file)
+        if not cred_path.is_absolute():
+            cred_path = Path.cwd() / cred_path
+
+        with open(cred_path) as f:
+            return json.load(f)
+
     def connect(self) -> None:
         """
-        Establish read-only connection to Snowflake using PAT authentication.
+        Establish read-only connection to Snowflake.
+
+        When ``credential_file`` is set in config, uses key-pair auth
+        (headless).  Otherwise falls back to external browser SSO.
 
         Raises:
             Exception: If connection fails
@@ -296,22 +325,41 @@ class SnowflakeConnection:
         try:
             self.logger.info(f"Connecting to Snowflake account: {self.config.account}")
 
-            # Connect using external browser authentication
-            self.connection = snowflake.connector.connect(
-                account=self.config.account,
-                user=self.config.username,
-                authenticator="externalbrowser",
-                role=self.config.role,
-                warehouse=self.config.warehouse,
-                client_session_keep_alive=True,
-                # Set reasonable timeouts
-                network_timeout=30,
-                login_timeout=10,
-                # Disable cloud provider credential auto-detection
-                # This prevents unnecessary checks for AWS/Azure/GCP metadata endpoints
-                ocsp_fail_open=False,
-                validate_default_parameters=True,
-            )
+            if self.config.credential_file:
+                # Key-pair authentication (headless)
+                creds = self._load_credential_file()
+                private_key_der = self._load_private_key(
+                    creds["private_key_b64"],
+                    creds["private_key_passphrase"],
+                )
+                self.logger.info("Using key-pair authentication (headless)")
+                self.connection = snowflake.connector.connect(
+                    account=creds.get("account", self.config.account),
+                    user=creds.get("user", self.config.username),
+                    private_key=private_key_der,
+                    role=creds.get("role", self.config.role),
+                    warehouse=creds.get("warehouse", self.config.warehouse),
+                    client_session_keep_alive=True,
+                    network_timeout=30,
+                    login_timeout=10,
+                    ocsp_fail_open=False,
+                    validate_default_parameters=True,
+                )
+            else:
+                # External browser SSO (interactive)
+                self.logger.info("Using external browser authentication (SSO)")
+                self.connection = snowflake.connector.connect(
+                    account=self.config.account,
+                    user=self.config.username,
+                    authenticator="externalbrowser",
+                    role=self.config.role,
+                    warehouse=self.config.warehouse,
+                    client_session_keep_alive=True,
+                    network_timeout=30,
+                    login_timeout=10,
+                    ocsp_fail_open=False,
+                    validate_default_parameters=True,
+                )
 
             # Set up session for safety
             self._setup_read_only_session()

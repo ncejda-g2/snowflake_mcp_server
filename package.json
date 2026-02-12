@@ -1,0 +1,35 @@
+{
+  "name": "snowflake-mcp-server",
+  "version": "0.1.5",
+  "description": "A Snowflake read-only MCP server with external browser authentication (SSO)",
+  "author": "Nicholas Cejda <ncejda@g2.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ncejda-g2/snowflake_mcp_server.git"
+  },
+  "keywords": [
+    "snowflake",
+    "mcp",
+    "model-context-protocol",
+    "ai",
+    "database",
+    "sql"
+  ],
+  "bin": {
+    "snowflake-mcp": "./bin/snowflake-mcp.js"
+  },
+  "files": [
+    "bin/",
+    "server/",
+    "pyproject.toml",
+    "uv.lock",
+    "requirements.txt"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "postinstall": "node bin/install.js"
+  }
+}
