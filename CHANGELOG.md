@@ -12,9 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - New `credential_file` config option (set via `SNOWFLAKE_CREDENTIAL_FILE` env var)
   - Loads base64-encoded PEM private key from a JSON credential file
   - Falls back to external browser SSO when not set
-- Docker support with `.dockerignore` and `docker-compose.yml`
 - npm package wrapper (`package.json`, `bin/`) for `npx`-based installation
-- Snowflake Labs MCP config example (`snowflake_labs_mcp_config.yaml`)
 
 ## [0.1.5] - 2025-10-29
 
