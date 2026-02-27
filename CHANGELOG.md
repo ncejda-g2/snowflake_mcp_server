@@ -5,6 +5,20 @@ All notable changes to the Snowflake MCP Server will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.7] - 2026-02-27
+
+### Changed
+- README: Add npx as recommended install method with config examples for all MCP clients
+- README: Document `SNOWFLAKE_CREDENTIAL_FILE` optional env var with inline comments
+- README: Fix broken nav anchors
+
+### Fixed
+- `bin/install.js`: Remove unused imports; fix misleading success message on manual setup path
+- `bin/snowflake-mcp.js`: Remove dead code, add guard against double `startServer()` call, fix Windows venv path
+
+### Removed
+- `tests/manual_test_snowflake_access.py` (contained hardcoded credentials)
+
 ## [0.1.6] - 2026-02-12
 
 ### Added
