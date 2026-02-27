@@ -23,10 +23,10 @@
   </p>
 
   <p align="center">
-    <a href="#-features">Features</a> •
+    <a href="#features">Features</a> •
     <a href="#-quick-start">Quick Start</a> •
-    <a href="#-installation">Installation</a> •
-    <a href="#-usage">Usage</a> •
+    <a href="#configuration">Configuration</a> •
+    <a href="#available-commands">Commands</a> •
     <a href="./docs">Documentation</a>
   </p>
 </div>
@@ -54,13 +54,19 @@ Snowflake MCP Server bridges the gap between your Snowflake data warehouse and A
 ## Features
 
 - 🔒 **Strict Read-Only Access**: Multiple layers of protection against write operations
-- 🔑 **External Browser Authentication**: Uses Snowflake's secure browser-based SSO
+- 🔑 **Flexible Authentication**: Browser-based SSO or headless key-pair auth via credential file
 - 💾 **Smart Caching**: 5-day schema cache for fast metadata access, reducing generic Snowflake schema queries and credit usage
 - 📄 **CSV Export**: Export query results directly to CSV files
 - 🛡️ **Query Validation**: Comprehensive SQL validation before execution
 - 🎯 **Responsible Token Management**: Lightweight outputs to minimize token usage
 
 ## 🚀 Quick Start
+
+### Option 1: npx (Recommended)
+
+No cloning or virtual environment needed — just configure your MCP client (see [Configuration](#configuration) below).
+
+### Option 2: From Source
 
 ```bash
 # Clone the repository
@@ -75,13 +81,33 @@ source snowflake_mcp_env/bin/activate  # On Windows: snowflake_mcp_env\Scripts\a
 pip install -r requirements.txt
 ```
 
-
 ## Configuration
 
 <details>
 <summary><b>Claude Code</b></summary>
 
 Edit your `~/.claude.json` file:
+
+**Using npx (Recommended):**
+
+```json
+{
+  "mcpServers": {
+    "snowflake-readonly": {
+      "command": "npx",
+      "args": ["-y", "snowflake-mcp-server"],
+      "env": {
+        "SNOWFLAKE_ACCOUNT": "your-account",
+        "SNOWFLAKE_USERNAME": "your-email@company.com",
+        "SNOWFLAKE_WAREHOUSE": "YOUR_WAREHOUSE",
+        "SNOWFLAKE_CREDENTIAL_FILE": "/path/to/credentials.json"  // optional — omit to use browser SSO
+      }
+    }
+  }
+}
+```
+
+**Using local clone:**
 
 ```json
 {
@@ -92,7 +118,8 @@ Edit your `~/.claude.json` file:
       "env": {
         "SNOWFLAKE_ACCOUNT": "your-account",
         "SNOWFLAKE_USERNAME": "your-email@company.com",
-        "SNOWFLAKE_WAREHOUSE": "YOUR_WAREHOUSE"
+        "SNOWFLAKE_WAREHOUSE": "YOUR_WAREHOUSE",
+        "SNOWFLAKE_CREDENTIAL_FILE": "/path/to/credentials.json"  // optional — omit to use browser SSO
       }
     }
   }
@@ -100,10 +127,11 @@ Edit your `~/.claude.json` file:
 ```
 
 Replace:
-- `/path/to/snowflake_mcp_server`: Absolute path to your cloned repository
+- `/path/to/snowflake_mcp_server`: Absolute path to your cloned repository (local clone only)
 - `your-account`: Your Snowflake account identifier (e.g., `xy12345.us-east-1`)
 - `your-email@company.com`: Your Snowflake username
 - `YOUR_WAREHOUSE`: Your Snowflake warehouse name
+- `SNOWFLAKE_CREDENTIAL_FILE` *(optional)*: Path to a JSON credential file for headless key-pair auth (omit to use browser SSO)
 
 </details>
 
@@ -115,6 +143,27 @@ Edit your configuration file:
 - Windows: `%APPDATA%\Claude\claude_desktop_config.json`
 - Linux: `~/.config/claude/claude_desktop_config.json`
 
+**Using npx (Recommended):**
+
+```json
+{
+  "mcpServers": {
+    "snowflake-readonly": {
+      "command": "npx",
+      "args": ["-y", "snowflake-mcp-server"],
+      "env": {
+        "SNOWFLAKE_ACCOUNT": "your-account",
+        "SNOWFLAKE_USERNAME": "your-email@company.com",
+        "SNOWFLAKE_WAREHOUSE": "YOUR_WAREHOUSE",
+        "SNOWFLAKE_CREDENTIAL_FILE": "/path/to/credentials.json"  // optional — omit to use browser SSO
+      }
+    }
+  }
+}
+```
+
+**Using local clone:**
+
 ```json
 {
   "mcpServers": {
@@ -124,7 +173,8 @@ Edit your configuration file:
       "env": {
         "SNOWFLAKE_ACCOUNT": "your-account",
         "SNOWFLAKE_USERNAME": "your-email@company.com",
-        "SNOWFLAKE_WAREHOUSE": "YOUR_WAREHOUSE"
+        "SNOWFLAKE_WAREHOUSE": "YOUR_WAREHOUSE",
+        "SNOWFLAKE_CREDENTIAL_FILE": "/path/to/credentials.json"  // optional — omit to use browser SSO
       }
     }
   }
@@ -132,10 +182,11 @@ Edit your configuration file:
 ```
 
 Replace:
-- `/path/to/snowflake_mcp_server`: Absolute path to your cloned repository
+- `/path/to/snowflake_mcp_server`: Absolute path to your cloned repository (local clone only)
 - `your-account`: Your Snowflake account identifier (e.g., `xy12345.us-east-1`)
 - `your-email@company.com`: Your Snowflake username
 - `YOUR_WAREHOUSE`: Your Snowflake warehouse name
+- `SNOWFLAKE_CREDENTIAL_FILE` *(optional)*: Path to a JSON credential file for headless key-pair auth (omit to use browser SSO)
 
 </details>
 
@@ -144,6 +195,27 @@ Replace:
 
 Edit your Cursor settings:
 
+**Using npx (Recommended):**
+
+```json
+{
+  "mcpServers": {
+    "snowflake-readonly": {
+      "command": "npx",
+      "args": ["-y", "snowflake-mcp-server"],
+      "env": {
+        "SNOWFLAKE_ACCOUNT": "your-account",
+        "SNOWFLAKE_USERNAME": "your-email@company.com",
+        "SNOWFLAKE_WAREHOUSE": "YOUR_WAREHOUSE",
+        "SNOWFLAKE_CREDENTIAL_FILE": "/path/to/credentials.json"  // optional — omit to use browser SSO
+      }
+    }
+  }
+}
+```
+
+**Using local clone:**
+
 ```json
 {
   "mcpServers": {
@@ -153,7 +225,8 @@ Edit your Cursor settings:
       "env": {
         "SNOWFLAKE_ACCOUNT": "your-account",
         "SNOWFLAKE_USERNAME": "your-email@company.com",
-        "SNOWFLAKE_WAREHOUSE": "YOUR_WAREHOUSE"
+        "SNOWFLAKE_WAREHOUSE": "YOUR_WAREHOUSE",
+        "SNOWFLAKE_CREDENTIAL_FILE": "/path/to/credentials.json"  // optional — omit to use browser SSO
       }
     }
   }
@@ -161,10 +234,11 @@ Edit your Cursor settings:
 ```
 
 Replace:
-- `/path/to/snowflake_mcp_server`: Absolute path to your cloned repository
+- `/path/to/snowflake_mcp_server`: Absolute path to your cloned repository (local clone only)
 - `your-account`: Your Snowflake account identifier (e.g., `xy12345.us-east-1`)
 - `your-email@company.com`: Your Snowflake username
 - `YOUR_WAREHOUSE`: Your Snowflake warehouse name
+- `SNOWFLAKE_CREDENTIAL_FILE` *(optional)*: Path to a JSON credential file for headless key-pair auth (omit to use browser SSO)
 
 </details>
 
@@ -173,6 +247,27 @@ Replace:
 
 Edit your `~/.gemini/settings.json` file:
 
+**Using npx (Recommended):**
+
+```json
+{
+  "mcpServers": {
+    "snowflake-readonly": {
+      "command": "npx",
+      "args": ["-y", "snowflake-mcp-server"],
+      "env": {
+        "SNOWFLAKE_ACCOUNT": "your-account",
+        "SNOWFLAKE_USERNAME": "your-email@company.com",
+        "SNOWFLAKE_WAREHOUSE": "YOUR_WAREHOUSE",
+        "SNOWFLAKE_CREDENTIAL_FILE": "/path/to/credentials.json"  // optional — omit to use browser SSO
+      }
+    }
+  }
+}
+```
+
+**Using local clone:**
+
 ```json
 {
   "mcpServers": {
@@ -182,7 +277,8 @@ Edit your `~/.gemini/settings.json` file:
       "env": {
         "SNOWFLAKE_ACCOUNT": "your-account",
         "SNOWFLAKE_USERNAME": "your-email@company.com",
-        "SNOWFLAKE_WAREHOUSE": "YOUR_WAREHOUSE"
+        "SNOWFLAKE_WAREHOUSE": "YOUR_WAREHOUSE",
+        "SNOWFLAKE_CREDENTIAL_FILE": "/path/to/credentials.json"  // optional — omit to use browser SSO
       }
     }
   }
@@ -190,10 +286,11 @@ Edit your `~/.gemini/settings.json` file:
 ```
 
 Replace:
-- `/path/to/snowflake_mcp_server`: Absolute path to your cloned repository
+- `/path/to/snowflake_mcp_server`: Absolute path to your cloned repository (local clone only)
 - `your-account`: Your Snowflake account identifier (e.g., `xy12345.us-east-1`)
 - `your-email@company.com`: Your Snowflake username
 - `YOUR_WAREHOUSE`: Your Snowflake warehouse name
+- `SNOWFLAKE_CREDENTIAL_FILE` *(optional)*: Path to a JSON credential file for headless key-pair auth (omit to use browser SSO)
 
 </details>
 
@@ -210,10 +307,6 @@ The server provides powerful tools for interacting with Snowflake:
 | `execute_query` | Run read-only SQL queries |
 | `execute_big_query_to_disk` | Stream large results to CSV |
 | `save_last_query_to_csv` | Export query results |
-
-
-
-
 
 ## 📚 Documentation
 
