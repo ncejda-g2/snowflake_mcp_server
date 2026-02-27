@@ -8,7 +8,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.7] - 2026-02-27
 
 ### Changed
-- README: Add npx as recommended install method with config examples for all MCP clients
 - README: Document `SNOWFLAKE_CREDENTIAL_FILE` optional env var with inline comments
 - README: Fix broken nav anchors
 

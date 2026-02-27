@@ -62,12 +62,6 @@ Snowflake MCP Server bridges the gap between your Snowflake data warehouse and A
 
 ## 🚀 Quick Start
 
-### Option 1: npx (Recommended)
-
-No cloning or virtual environment needed — just configure your MCP client (see [Configuration](#configuration) below).
-
-### Option 2: From Source
-
 ```bash
 # Clone the repository
 git clone git@github.com:ncejda-g2/snowflake_mcp_server.git
@@ -88,27 +82,6 @@ pip install -r requirements.txt
 
 Edit your `~/.claude.json` file:
 
-**Using npx (Recommended):**
-
-```json
-{
-  "mcpServers": {
-    "snowflake-readonly": {
-      "command": "npx",
-      "args": ["-y", "snowflake-mcp-server"],
-      "env": {
-        "SNOWFLAKE_ACCOUNT": "your-account",
-        "SNOWFLAKE_USERNAME": "your-email@company.com",
-        "SNOWFLAKE_WAREHOUSE": "YOUR_WAREHOUSE",
-        "SNOWFLAKE_CREDENTIAL_FILE": "/path/to/credentials.json"  // optional — omit to use browser SSO
-      }
-    }
-  }
-}
-```
-
-**Using local clone:**
-
 ```json
 {
   "mcpServers": {
@@ -127,7 +100,7 @@ Edit your `~/.claude.json` file:
 ```
 
 Replace:
-- `/path/to/snowflake_mcp_server`: Absolute path to your cloned repository (local clone only)
+- `/path/to/snowflake_mcp_server`: Absolute path to your cloned repository
 - `your-account`: Your Snowflake account identifier (e.g., `xy12345.us-east-1`)
 - `your-email@company.com`: Your Snowflake username
 - `YOUR_WAREHOUSE`: Your Snowflake warehouse name
@@ -143,27 +116,6 @@ Edit your configuration file:
 - Windows: `%APPDATA%\Claude\claude_desktop_config.json`
 - Linux: `~/.config/claude/claude_desktop_config.json`
 
-**Using npx (Recommended):**
-
-```json
-{
-  "mcpServers": {
-    "snowflake-readonly": {
-      "command": "npx",
-      "args": ["-y", "snowflake-mcp-server"],
-      "env": {
-        "SNOWFLAKE_ACCOUNT": "your-account",
-        "SNOWFLAKE_USERNAME": "your-email@company.com",
-        "SNOWFLAKE_WAREHOUSE": "YOUR_WAREHOUSE",
-        "SNOWFLAKE_CREDENTIAL_FILE": "/path/to/credentials.json"  // optional — omit to use browser SSO
-      }
-    }
-  }
-}
-```
-
-**Using local clone:**
-
 ```json
 {
   "mcpServers": {
@@ -182,7 +134,7 @@ Edit your configuration file:
 ```
 
 Replace:
-- `/path/to/snowflake_mcp_server`: Absolute path to your cloned repository (local clone only)
+- `/path/to/snowflake_mcp_server`: Absolute path to your cloned repository
 - `your-account`: Your Snowflake account identifier (e.g., `xy12345.us-east-1`)
 - `your-email@company.com`: Your Snowflake username
 - `YOUR_WAREHOUSE`: Your Snowflake warehouse name
@@ -195,27 +147,6 @@ Replace:
 
 Edit your Cursor settings:
 
-**Using npx (Recommended):**
-
-```json
-{
-  "mcpServers": {
-    "snowflake-readonly": {
-      "command": "npx",
-      "args": ["-y", "snowflake-mcp-server"],
-      "env": {
-        "SNOWFLAKE_ACCOUNT": "your-account",
-        "SNOWFLAKE_USERNAME": "your-email@company.com",
-        "SNOWFLAKE_WAREHOUSE": "YOUR_WAREHOUSE",
-        "SNOWFLAKE_CREDENTIAL_FILE": "/path/to/credentials.json"  // optional — omit to use browser SSO
-      }
-    }
-  }
-}
-```
-
-**Using local clone:**
-
 ```json
 {
   "mcpServers": {
@@ -234,7 +165,7 @@ Edit your Cursor settings:
 ```
 
 Replace:
-- `/path/to/snowflake_mcp_server`: Absolute path to your cloned repository (local clone only)
+- `/path/to/snowflake_mcp_server`: Absolute path to your cloned repository
 - `your-account`: Your Snowflake account identifier (e.g., `xy12345.us-east-1`)
 - `your-email@company.com`: Your Snowflake username
 - `YOUR_WAREHOUSE`: Your Snowflake warehouse name
@@ -247,27 +178,6 @@ Replace:
 
 Edit your `~/.gemini/settings.json` file:
 
-**Using npx (Recommended):**
-
-```json
-{
-  "mcpServers": {
-    "snowflake-readonly": {
-      "command": "npx",
-      "args": ["-y", "snowflake-mcp-server"],
-      "env": {
-        "SNOWFLAKE_ACCOUNT": "your-account",
-        "SNOWFLAKE_USERNAME": "your-email@company.com",
-        "SNOWFLAKE_WAREHOUSE": "YOUR_WAREHOUSE",
-        "SNOWFLAKE_CREDENTIAL_FILE": "/path/to/credentials.json"  // optional — omit to use browser SSO
-      }
-    }
-  }
-}
-```
-
-**Using local clone:**
-
 ```json
 {
   "mcpServers": {
@@ -286,7 +196,7 @@ Edit your `~/.gemini/settings.json` file:
 ```
 
 Replace:
-- `/path/to/snowflake_mcp_server`: Absolute path to your cloned repository (local clone only)
+- `/path/to/snowflake_mcp_server`: Absolute path to your cloned repository
 - `your-account`: Your Snowflake account identifier (e.g., `xy12345.us-east-1`)
 - `your-email@company.com`: Your Snowflake username
 - `YOUR_WAREHOUSE`: Your Snowflake warehouse name
