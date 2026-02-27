@@ -22,26 +22,29 @@ if (missingVars.length > 0) {
 // Get the package directory
 const packageDir = path.resolve(__dirname, '..');
 
+// Check if we're running from a global install
+const isGlobalInstall = !packageDir.includes('node_modules');
+
+// Determine Python command
+let pythonCmd = 'python3';
+const testPython = spawn('python3', ['--version']);
+testPython.on('error', () => {
+  pythonCmd = 'python';
+});
+
 // Check for uv first, fall back to direct python execution
 const uvCheck = spawn('uv', ['--version']);
 let useUv = false;
-let started = false;
-
-function maybeStart() {
-  if (started) return;
-  started = true;
-  startServer();
-}
 
 uvCheck.on('close', (code) => {
   if (code === 0) {
     useUv = true;
   }
-  maybeStart();
+  startServer();
 });
 
 uvCheck.on('error', () => {
-  maybeStart();
+  startServer();
 });
 
 function startServer() {
@@ -66,7 +69,7 @@ function startServer() {
     }
 
     // Use the venv python
-    const venvPython = path.join(venvPath, process.platform === 'win32' ? 'Scripts' : 'bin', 'python');
+    const venvPython = path.join(venvPath, 'bin', 'python');
     child = spawn(venvPython, ['-m', 'server.app'], {
       stdio: 'inherit',
       env: process.env,

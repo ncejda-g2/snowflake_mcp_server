@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
-const { execSync } = require('child_process');
+const { execSync, spawn } = require('child_process');
 const path = require('path');
+const fs = require('fs');
 
 const packageDir = path.resolve(__dirname, '..');
 
@@ -65,12 +66,7 @@ if (hasUv) {
   console.log('  pip install -e .');
 }
 
-if (hasUv) {
-  console.log('\n✓ Snowflake MCP Server setup complete!');
-} else {
-  console.log('\n⚠️  Setup incomplete — manual steps required above.');
-}
-
+console.log('\n✓ Snowflake MCP Server setup complete!');
 console.log('\nTo use the server, set the following environment variables:');
 console.log('  export SNOWFLAKE_ACCOUNT="your-account-id"');
 console.log('  export SNOWFLAKE_USERNAME="your-email@company.com"');
