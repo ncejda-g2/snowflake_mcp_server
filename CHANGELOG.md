@@ -5,6 +5,12 @@ All notable changes to the Snowflake MCP Server will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.8] - 2026-02-27
+
+### Changed
+- Rename npm package from `snowflake-mcp-server` to `snowflake-readonly-mcp` (the former was already taken on npm)
+- Update all npx references in README to use new package name
+
 ## [0.1.7] - 2026-02-27
 
 ### Changed
