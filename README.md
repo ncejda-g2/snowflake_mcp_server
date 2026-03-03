@@ -12,7 +12,7 @@
 
   <p align="center">
     <a href="https://github.com/ncejda-g2/snowflake_mcp_server/releases">
-      <img src="https://img.shields.io/badge/version-v0.1.7-9b59b6" alt="Version" />
+      <img src="https://img.shields.io/badge/version-v0.1.8-9b59b6" alt="Version" />
     </a>
     <a href="./CHANGELOG.md">
       <img src="https://img.shields.io/badge/changelog-Latest%20Changes-blue" alt="Changelog" />
@@ -95,7 +95,7 @@ Edit your `~/.claude.json` file:
   "mcpServers": {
     "snowflake-readonly": {
       "command": "npx",
-      "args": ["-y", "snowflake-mcp-server"],
+      "args": ["-y", "snowflake-readonly-mcp"],
       "env": {
         "SNOWFLAKE_ACCOUNT": "your-account",
         "SNOWFLAKE_USERNAME": "your-email@company.com",
@@ -150,7 +150,7 @@ Edit your configuration file:
   "mcpServers": {
     "snowflake-readonly": {
       "command": "npx",
-      "args": ["-y", "snowflake-mcp-server"],
+      "args": ["-y", "snowflake-readonly-mcp"],
       "env": {
         "SNOWFLAKE_ACCOUNT": "your-account",
         "SNOWFLAKE_USERNAME": "your-email@company.com",
@@ -202,7 +202,7 @@ Edit your Cursor settings:
   "mcpServers": {
     "snowflake-readonly": {
       "command": "npx",
-      "args": ["-y", "snowflake-mcp-server"],
+      "args": ["-y", "snowflake-readonly-mcp"],
       "env": {
         "SNOWFLAKE_ACCOUNT": "your-account",
         "SNOWFLAKE_USERNAME": "your-email@company.com",
@@ -254,7 +254,7 @@ Edit your `~/.gemini/settings.json` file:
   "mcpServers": {
     "snowflake-readonly": {
       "command": "npx",
-      "args": ["-y", "snowflake-mcp-server"],
+      "args": ["-y", "snowflake-readonly-mcp"],
       "env": {
         "SNOWFLAKE_ACCOUNT": "your-account",
         "SNOWFLAKE_USERNAME": "your-email@company.com",

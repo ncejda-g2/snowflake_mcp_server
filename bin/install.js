@@ -75,4 +75,4 @@ console.log('\nTo use the server, set the following environment variables:');
 console.log('  export SNOWFLAKE_ACCOUNT="your-account-id"');
 console.log('  export SNOWFLAKE_USERNAME="your-email@company.com"');
 console.log('  export SNOWFLAKE_WAREHOUSE="YOUR_WAREHOUSE"');
-console.log('\nThen run: npx snowflake-mcp-server');
+console.log('\nThen run: npx snowflake-readonly-mcp');
