@@ -5,6 +5,17 @@ All notable changes to the Snowflake MCP Server will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.10] - 2026-03-09
+
+### Fixed
+- `package.json`: Add missing `main.py` to `files` list — caused server crash when installed via `npx` from any directory other than the project root
+- `package.json`: Fix bin entry key to match package name (`snowflake-readonly-mcp`) so `npx` resolves correctly
+- `package.json`: Update `files` glob from `server/` to `server/**/*.py` to exclude `__pycache__` from npm tarball
+
+### Added
+- README: Add OpenCode configuration section with correct `mcp`/`command`/`environment` key format
+- README: Collapse "Option 2: From Source" into a default-closed details block
+
 ## [0.1.8] - 2026-02-27
 
 ### Changed

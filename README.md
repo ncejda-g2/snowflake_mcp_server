@@ -12,7 +12,7 @@
 
   <p align="center">
     <a href="https://github.com/ncejda-g2/snowflake_mcp_server/releases">
-      <img src="https://img.shields.io/badge/version-v0.1.8-9b59b6" alt="Version" />
+      <img src="https://img.shields.io/badge/version-v0.1.10-9b59b6" alt="Version" />
     </a>
     <a href="./CHANGELOG.md">
       <img src="https://img.shields.io/badge/changelog-Latest%20Changes-blue" alt="Changelog" />
@@ -66,7 +66,8 @@ Snowflake MCP Server bridges the gap between your Snowflake data warehouse and A
 
 No cloning or virtual environment needed — just configure your MCP client (see [Configuration](#configuration) below).
 
-### Option 2: From Source
+<details>
+<summary><b>Option 2: From Source</b></summary>
 
 ```bash
 # Clone the repository
@@ -80,6 +81,8 @@ source snowflake_mcp_env/bin/activate  # On Windows: snowflake_mcp_env\Scripts\a
 # Install dependencies
 pip install -r requirements.txt
 ```
+
+</details>
 
 ## Configuration
 
@@ -223,6 +226,62 @@ Edit your Cursor settings:
       "command": "/path/to/snowflake_mcp_server/snowflake_mcp_env/bin/python",
       "args": ["/path/to/snowflake_mcp_server/main.py"],
       "env": {
+        "SNOWFLAKE_ACCOUNT": "your-account",
+        "SNOWFLAKE_USERNAME": "your-email@company.com",
+        "SNOWFLAKE_WAREHOUSE": "YOUR_WAREHOUSE",
+        "SNOWFLAKE_CREDENTIAL_FILE": "/path/to/credentials.json"  // optional — omit to use browser SSO
+      }
+    }
+  }
+}
+```
+
+Replace:
+- `/path/to/snowflake_mcp_server`: Absolute path to your cloned repository (local clone only)
+- `your-account`: Your Snowflake account identifier (e.g., `xy12345.us-east-1`)
+- `your-email@company.com`: Your Snowflake username
+- `YOUR_WAREHOUSE`: Your Snowflake warehouse name
+- `SNOWFLAKE_CREDENTIAL_FILE` *(optional)*: Path to a JSON credential file for headless key-pair auth (omit to use browser SSO)
+
+</details>
+
+<details>
+<summary><b>OpenCode</b></summary>
+
+Edit your `~/.config/opencode/opencode.json` file (global) or `opencode.json` in your project root (project-level):
+
+> **Note:** OpenCode uses `"mcp"` (not `"mcpServers"`), `"command"` as a single array (not separate `command`/`args`), and `"environment"` (not `"env"`).
+
+**Using npx (Recommended):**
+
+```jsonc
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "snowflake-readonly": {
+      "type": "local",
+      "command": ["npx", "-y", "snowflake-readonly-mcp"],
+      "environment": {
+        "SNOWFLAKE_ACCOUNT": "your-account",
+        "SNOWFLAKE_USERNAME": "your-email@company.com",
+        "SNOWFLAKE_WAREHOUSE": "YOUR_WAREHOUSE",
+        "SNOWFLAKE_CREDENTIAL_FILE": "/path/to/credentials.json"  // optional — omit to use browser SSO
+      }
+    }
+  }
+}
+```
+
+**Using local clone:**
+
+```jsonc
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "snowflake-readonly": {
+      "type": "local",
+      "command": ["/path/to/snowflake_mcp_server/snowflake_mcp_env/bin/python", "/path/to/snowflake_mcp_server/main.py"],
+      "environment": {
         "SNOWFLAKE_ACCOUNT": "your-account",
         "SNOWFLAKE_USERNAME": "your-email@company.com",
         "SNOWFLAKE_WAREHOUSE": "YOUR_WAREHOUSE",

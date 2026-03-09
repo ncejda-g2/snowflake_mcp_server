@@ -1,6 +1,6 @@
 {
   "name": "snowflake-readonly-mcp",
-  "version": "0.1.8",
+  "version": "0.1.10",
   "description": "A Snowflake read-only MCP server with key-pair and browser SSO authentication",
   "author": "Nicholas Cejda <ncejda@g2.com>",
   "license": "MIT",
@@ -17,11 +17,12 @@
     "sql"
   ],
   "bin": {
-    "snowflake-mcp": "./bin/snowflake-mcp.js"
+    "snowflake-readonly-mcp": "bin/snowflake-mcp.js"
   },
   "files": [
     "bin/",
-    "server/",
+    "main.py",
+    "server/**/*.py",
     "pyproject.toml",
     "uv.lock",
     "requirements.txt"
