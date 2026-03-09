@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - README: Add OpenCode configuration section with correct `mcp`/`command`/`environment` key format
 - README: Collapse "Option 2: From Source" into a default-closed details block
+- CI: Add `publish-npm.yml` workflow using npm Trusted Publisher (OIDC) — no more `NPM_TOKEN` secret
+- CI: Add GitHub Release creation to `tag-version.yml` (triggers npm publish on release)
 
 ## [0.1.8] - 2026-02-27
 
