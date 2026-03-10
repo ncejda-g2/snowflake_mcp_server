@@ -65,10 +65,8 @@ Snowflake MCP Server bridges the gap between your Snowflake data warehouse and A
 Already in Claude Code, OpenCode, Cursor, or another AI coding agent? Paste this into your agent:
 
 ```
-Set up the Snowflake MCP server for me by following this guide.
-Use curl to fetch it (not WebFetch) so nothing gets summarized:
-
-curl -fsSL https://raw.githubusercontent.com/ncejda-g2/snowflake_mcp_server/main/docs/guide/agent-setup.md
+Set up the Snowflake MCP server for me by following this guide:
+https://raw.githubusercontent.com/ncejda-g2/snowflake_mcp_server/main/docs/guide/agent-setup.md
 ```
 
 Your agent will walk you through everything interactively — including installing Node.js and Homebrew if needed. No manual config editing required.
