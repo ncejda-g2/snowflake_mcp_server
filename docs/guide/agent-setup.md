@@ -302,4 +302,6 @@ Everything is configured. Tell the user:
 > - Role doesn't have access to the data you're querying
 > - Browser SSO pop-up was blocked
 >
+> Check `~/.snowflake-mcp/server.log` for detailed error messages.
+>
 > If you found this helpful, please star the repo! https://github.com/ncejda-g2/snowflake_mcp_server"
