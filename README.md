@@ -109,6 +109,7 @@ Edit your `~/.claude.json` file:
         "SNOWFLAKE_ACCOUNT": "your-account",
         "SNOWFLAKE_USERNAME": "your-email@company.com",
         "SNOWFLAKE_WAREHOUSE": "YOUR_WAREHOUSE",
+        "SNOWFLAKE_ROLE": "YOUR_ROLE",
         "SNOWFLAKE_CREDENTIAL_FILE": "/path/to/credentials.json"  // optional — omit to use browser SSO
       }
     }
@@ -128,6 +129,7 @@ Edit your `~/.claude.json` file:
         "SNOWFLAKE_ACCOUNT": "your-account",
         "SNOWFLAKE_USERNAME": "your-email@company.com",
         "SNOWFLAKE_WAREHOUSE": "YOUR_WAREHOUSE",
+        "SNOWFLAKE_ROLE": "YOUR_ROLE",
         "SNOWFLAKE_CREDENTIAL_FILE": "/path/to/credentials.json"  // optional — omit to use browser SSO
       }
     }
@@ -140,6 +142,7 @@ Replace:
 - `your-account`: Your Snowflake account identifier (e.g., `xy12345.us-east-1`)
 - `your-email@company.com`: Your Snowflake username
 - `YOUR_WAREHOUSE`: Your Snowflake warehouse name
+- `YOUR_ROLE`: Your Snowflake role (e.g., `ANALYST`, `PUBLIC`)
 - `SNOWFLAKE_CREDENTIAL_FILE` *(optional)*: Path to a JSON credential file for headless key-pair auth (omit to use browser SSO)
 
 </details>
@@ -164,6 +167,7 @@ Edit your configuration file:
         "SNOWFLAKE_ACCOUNT": "your-account",
         "SNOWFLAKE_USERNAME": "your-email@company.com",
         "SNOWFLAKE_WAREHOUSE": "YOUR_WAREHOUSE",
+        "SNOWFLAKE_ROLE": "YOUR_ROLE",
         "SNOWFLAKE_CREDENTIAL_FILE": "/path/to/credentials.json"  // optional — omit to use browser SSO
       }
     }
@@ -183,6 +187,7 @@ Edit your configuration file:
         "SNOWFLAKE_ACCOUNT": "your-account",
         "SNOWFLAKE_USERNAME": "your-email@company.com",
         "SNOWFLAKE_WAREHOUSE": "YOUR_WAREHOUSE",
+        "SNOWFLAKE_ROLE": "YOUR_ROLE",
         "SNOWFLAKE_CREDENTIAL_FILE": "/path/to/credentials.json"  // optional — omit to use browser SSO
       }
     }
@@ -195,6 +200,7 @@ Replace:
 - `your-account`: Your Snowflake account identifier (e.g., `xy12345.us-east-1`)
 - `your-email@company.com`: Your Snowflake username
 - `YOUR_WAREHOUSE`: Your Snowflake warehouse name
+- `YOUR_ROLE`: Your Snowflake role (e.g., `ANALYST`, `PUBLIC`)
 - `SNOWFLAKE_CREDENTIAL_FILE` *(optional)*: Path to a JSON credential file for headless key-pair auth (omit to use browser SSO)
 
 </details>
@@ -216,6 +222,7 @@ Edit your Cursor settings:
         "SNOWFLAKE_ACCOUNT": "your-account",
         "SNOWFLAKE_USERNAME": "your-email@company.com",
         "SNOWFLAKE_WAREHOUSE": "YOUR_WAREHOUSE",
+        "SNOWFLAKE_ROLE": "YOUR_ROLE",
         "SNOWFLAKE_CREDENTIAL_FILE": "/path/to/credentials.json"  // optional — omit to use browser SSO
       }
     }
@@ -235,6 +242,7 @@ Edit your Cursor settings:
         "SNOWFLAKE_ACCOUNT": "your-account",
         "SNOWFLAKE_USERNAME": "your-email@company.com",
         "SNOWFLAKE_WAREHOUSE": "YOUR_WAREHOUSE",
+        "SNOWFLAKE_ROLE": "YOUR_ROLE",
         "SNOWFLAKE_CREDENTIAL_FILE": "/path/to/credentials.json"  // optional — omit to use browser SSO
       }
     }
@@ -247,6 +255,7 @@ Replace:
 - `your-account`: Your Snowflake account identifier (e.g., `xy12345.us-east-1`)
 - `your-email@company.com`: Your Snowflake username
 - `YOUR_WAREHOUSE`: Your Snowflake warehouse name
+- `YOUR_ROLE`: Your Snowflake role (e.g., `ANALYST`, `PUBLIC`)
 - `SNOWFLAKE_CREDENTIAL_FILE` *(optional)*: Path to a JSON credential file for headless key-pair auth (omit to use browser SSO)
 
 </details>
@@ -271,6 +280,7 @@ Edit your `~/.config/opencode/opencode.json` file (global) or `opencode.json` in
         "SNOWFLAKE_ACCOUNT": "your-account",
         "SNOWFLAKE_USERNAME": "your-email@company.com",
         "SNOWFLAKE_WAREHOUSE": "YOUR_WAREHOUSE",
+        "SNOWFLAKE_ROLE": "YOUR_ROLE",
         "SNOWFLAKE_CREDENTIAL_FILE": "/path/to/credentials.json"  // optional — omit to use browser SSO
       }
     }
@@ -291,6 +301,7 @@ Edit your `~/.config/opencode/opencode.json` file (global) or `opencode.json` in
         "SNOWFLAKE_ACCOUNT": "your-account",
         "SNOWFLAKE_USERNAME": "your-email@company.com",
         "SNOWFLAKE_WAREHOUSE": "YOUR_WAREHOUSE",
+        "SNOWFLAKE_ROLE": "YOUR_ROLE",
         "SNOWFLAKE_CREDENTIAL_FILE": "/path/to/credentials.json"  // optional — omit to use browser SSO
       }
     }
@@ -303,6 +314,7 @@ Replace:
 - `your-account`: Your Snowflake account identifier (e.g., `xy12345.us-east-1`)
 - `your-email@company.com`: Your Snowflake username
 - `YOUR_WAREHOUSE`: Your Snowflake warehouse name
+- `YOUR_ROLE`: Your Snowflake role (e.g., `ANALYST`, `PUBLIC`)
 - `SNOWFLAKE_CREDENTIAL_FILE` *(optional)*: Path to a JSON credential file for headless key-pair auth (omit to use browser SSO)
 
 </details>
@@ -324,6 +336,7 @@ Edit your `~/.gemini/settings.json` file:
         "SNOWFLAKE_ACCOUNT": "your-account",
         "SNOWFLAKE_USERNAME": "your-email@company.com",
         "SNOWFLAKE_WAREHOUSE": "YOUR_WAREHOUSE",
+        "SNOWFLAKE_ROLE": "YOUR_ROLE",
         "SNOWFLAKE_CREDENTIAL_FILE": "/path/to/credentials.json"  // optional — omit to use browser SSO
       }
     }
@@ -343,6 +356,7 @@ Edit your `~/.gemini/settings.json` file:
         "SNOWFLAKE_ACCOUNT": "your-account",
         "SNOWFLAKE_USERNAME": "your-email@company.com",
         "SNOWFLAKE_WAREHOUSE": "YOUR_WAREHOUSE",
+        "SNOWFLAKE_ROLE": "YOUR_ROLE",
         "SNOWFLAKE_CREDENTIAL_FILE": "/path/to/credentials.json"  // optional — omit to use browser SSO
       }
     }
@@ -355,6 +369,7 @@ Replace:
 - `your-account`: Your Snowflake account identifier (e.g., `xy12345.us-east-1`)
 - `your-email@company.com`: Your Snowflake username
 - `YOUR_WAREHOUSE`: Your Snowflake warehouse name
+- `YOUR_ROLE`: Your Snowflake role (e.g., `ANALYST`, `PUBLIC`)
 - `SNOWFLAKE_CREDENTIAL_FILE` *(optional)*: Path to a JSON credential file for headless key-pair auth (omit to use browser SSO)
 
 </details>
