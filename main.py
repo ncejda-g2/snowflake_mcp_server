@@ -4,20 +4,19 @@
 import os
 import sys
 
-from server.app import config, mcp
 from server.log_utils import LOG_FILE_PATH, logger
+
+REQUIRED_VARS = [
+    "SNOWFLAKE_ACCOUNT",
+    "SNOWFLAKE_USERNAME",
+    "SNOWFLAKE_WAREHOUSE",
+    "SNOWFLAKE_ROLE",
+]
 
 
 def main():
     """Main entry point."""
-    required_vars = [
-        "SNOWFLAKE_ACCOUNT",
-        "SNOWFLAKE_USERNAME",
-        "SNOWFLAKE_WAREHOUSE",
-        "SNOWFLAKE_ROLE",
-    ]
-
-    missing_vars = [var for var in required_vars if not os.getenv(var)]
+    missing_vars = [var for var in REQUIRED_VARS if not os.getenv(var)]
 
     if missing_vars:
         logger.error("Missing required environment variables:")
@@ -32,6 +31,9 @@ def main():
         logger.error('  export SNOWFLAKE_WAREHOUSE="COMPUTE_WH"')
         logger.error('  export SNOWFLAKE_ROLE="YOUR_ROLE"')
         sys.exit(1)
+
+    # Import app only after env vars are validated — app.py calls Config.from_env() at module level
+    from server.app import config, mcp
 
     logger.info(
         "snowflake-mcp starting (account=%s, warehouse=%s, log file: %s)",
