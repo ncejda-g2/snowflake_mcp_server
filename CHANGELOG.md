@@ -18,6 +18,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CI: Add `publish-npm.yml` workflow using npm Trusted Publisher (OIDC) — no more `NPM_TOKEN` secret
 - CI: Add GitHub Release creation to `tag-version.yml` (triggers npm publish on release)
 
+## [0.1.9] - 2026-03-03
+
+### Fixed
+- `package.json`: Fix bin entry key to match package name (`snowflake-readonly-mcp`) so `npx` resolves correctly
+- `package.json`: Update `files` glob from `server/` to `server/**/*.py` to exclude `__pycache__` from npm tarball
+
+### Added
+- CI/CD workflow to auto-publish npm package on push to main when version changes
+
 ## [0.1.8] - 2026-02-27
 
 ### Changed
