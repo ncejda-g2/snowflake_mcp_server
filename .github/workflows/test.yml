@@ -89,6 +89,28 @@ jobs:
 
           echo "✅ README version badge matches pyproject.toml"
 
+      - name: Check package.json version
+        if: steps.changes.outputs.needs_version_bump == 'true'
+        run: |
+          # Get version from pyproject.toml
+          PR_VERSION=$(grep -oP 'version = "\K[^"]+' pyproject.toml | head -1)
+
+          # Get version from package.json
+          PKG_VERSION=$(grep -oP '"version": "\K[^"]+' package.json || echo "")
+
+          echo "pyproject.toml version: $PR_VERSION"
+          echo "package.json version: $PKG_VERSION"
+
+          if [ "$PKG_VERSION" != "$PR_VERSION" ]; then
+            echo "❌ package.json version does not match pyproject.toml version!"
+            echo "Expected: $PR_VERSION"
+            echo "Found: $PKG_VERSION"
+            echo "Please update the version in package.json to match pyproject.toml"
+            exit 1
+          fi
+
+          echo "✅ package.json version matches pyproject.toml"
+
       - name: Check CHANGELOG update
         if: steps.changes.outputs.needs_version_bump == 'true'
         run: |
@@ -117,6 +139,7 @@ jobs:
             echo "✅ All PR validation checks passed!"
             echo "- Version bumped"
             echo "- README version badge updated"
+            echo "- package.json version synced"
             echo "- CHANGELOG updated"
           fi
 
