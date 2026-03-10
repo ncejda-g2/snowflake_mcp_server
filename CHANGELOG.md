@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - **BREAKING**: `SNOWFLAKE_ROLE` is now a required environment variable — removed hardcoded `ML_DEVELOPER` default that caused silent failures for non-G2 users
-- Log file permissions: `~/.snowflake-mcp/` restricted to `0700`, `server.log` to `0600` (previously world-readable)
+- Log file permissions: `~/.snowflake_mcp/` restricted to `0700`, `server.log` to `0600` (previously world-readable)
 - `credential_file` config field hidden from repr output
 
 ### Changed
@@ -19,7 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.15] - 2026-03-10
 
 ### Added
-- Persistent file logging to `~/.snowflake-mcp/server.log` (RotatingFileHandler, 5MB max, 2 backups) — logs are now always available even in MCP clients that don't capture stderr (Claude Code, Cursor)
+- Persistent file logging to `~/.snowflake_mcp/server.log` (RotatingFileHandler, 5MB max, 2 backups) — logs are now always available even in MCP clients that don't capture stderr (Claude Code, Cursor)
 - Startup milestone logging: account, warehouse, transport mode, and log file path printed on start
 - `PYTHONUNBUFFERED=1` in Node.js wrapper to ensure Python stderr flushes before crash
 

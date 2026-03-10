@@ -9,7 +9,7 @@ from pathlib import Path
 from server.config import Config
 
 # Persistent log file location
-LOG_DIR = Path.home() / ".snowflake-mcp"
+LOG_DIR = Path.home() / ".snowflake_mcp"
 LOG_FILE_PATH = LOG_DIR / "server.log"
 
 

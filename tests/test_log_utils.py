@@ -137,7 +137,7 @@ def test_module_level_logger():
 
 
 def test_log_file_path():
-    assert Path.home() / ".snowflake-mcp" / "server.log" == LOG_FILE_PATH
+    assert Path.home() / ".snowflake_mcp" / "server.log" == LOG_FILE_PATH
 
 
 def test_file_handler_writes_to_correct_path(mock_config):
