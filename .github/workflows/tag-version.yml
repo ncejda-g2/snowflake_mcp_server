@@ -1,4 +1,4 @@
-name: Tag Version & Release
+name: Tag, Release & Publish
 
 on:
   push:
@@ -9,23 +9,22 @@ on:
 
 permissions:
   contents: write
+  id-token: write
 
 jobs:
-  tag-version:
+  release:
     runs-on: ubuntu-latest
+    environment: npm-publish
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 2  # Need to compare with previous commit
+          fetch-depth: 2
 
       - name: Check if version changed
         id: version-check
         run: |
-          # Get current version from pyproject.toml
           CURRENT_VERSION=$(grep -oP 'version = "\K[^"]+' pyproject.toml | head -1)
-
-          # Get previous version from last commit
           PREVIOUS_VERSION=$(git show HEAD~1:pyproject.toml | grep -oP 'version = "\K[^"]+' | head -1)
 
           echo "Current version: $CURRENT_VERSION"
@@ -45,17 +44,14 @@ jobs:
         run: |
           VERSION="v${{ steps.version-check.outputs.new_version }}"
 
-          # Check if tag already exists
           if git rev-parse "$VERSION" >/dev/null 2>&1; then
             echo "Tag $VERSION already exists, skipping"
             exit 0
           fi
 
-          # Configure git
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          # Create and push tag
           git tag -a "$VERSION" -m "Release $VERSION"
           git push origin "$VERSION"
 
@@ -68,7 +64,6 @@ jobs:
         run: |
           VERSION="v${{ steps.version-check.outputs.new_version }}"
 
-          # Check if release already exists
           if gh release view "$VERSION" >/dev/null 2>&1; then
             echo "Release $VERSION already exists, skipping"
             exit 0
@@ -78,4 +73,15 @@ jobs:
             --title "$VERSION" \
             --generate-notes
 
-          echo "✅ Created GitHub Release $VERSION"
+          echo "Created GitHub Release $VERSION"
+
+      - name: Setup Node.js
+        if: steps.version-check.outputs.version_changed == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Publish to npm
+        if: steps.version-check.outputs.version_changed == 'true'
+        run: npm publish --provenance --access public
