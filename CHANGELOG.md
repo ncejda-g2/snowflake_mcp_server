@@ -5,6 +5,16 @@ All notable changes to the Snowflake MCP Server will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.15] - 2026-03-10
+
+### Added
+- Persistent file logging to `~/.snowflake-mcp/server.log` (RotatingFileHandler, 5MB max, 2 backups) — logs are now always available even in MCP clients that don't capture stderr (Claude Code, Cursor)
+- Startup milestone logging: account, warehouse, transport mode, and log file path printed on start
+- `PYTHONUNBUFFERED=1` in Node.js wrapper to ensure Python stderr flushes before crash
+
+### Fixed
+- Removed duplicate `logging.basicConfig()` in `server/app.py` that competed with `log_utils.py`
+
 ## [0.1.14] - 2026-03-10
 
 ### Improved

@@ -18,12 +18,8 @@ from server.tools import (
     table_inspector,
 )
 
-# Initialize configuration and logging
+# Initialize configuration (logging is configured by server.log_utils on import)
 config = Config.from_env()
-logging.basicConfig(
-    level=logging.DEBUG if config.debug else logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-)
 logger = logging.getLogger(__name__)
 
 # Initialize MCP server
