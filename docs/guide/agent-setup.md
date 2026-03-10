@@ -156,33 +156,52 @@ If this fails, stop and troubleshoot before continuing.
 
 ## Step 2 — Collect Snowflake Credentials
 
-Ask the user for the four items below **in a single question**. Include the
-"how to find it" tips directly in the question text so the user sees the help
-right when they need it. Don't ask them to go find values in a separate step.
+**Use your interactive question/input tool** to collect these from the user.
+Do NOT just print the questions as plain text — call the tool so the user gets
+an interactive prompt. Examples: OpenCode's `question` tool, Cline's
+`ask_followup_question`. If your client has no such tool, ask conversationally
+and wait for the user's reply before proceeding.
 
-Present something like:
+Call the tool with these four questions. Include the "how to find it" navigation
+tips in the question text so the user sees the help right when they need it.
 
-> I need a few details about your Snowflake account. Here's what I need and
-> where to find each one:
->
-> **1. Account identifier** (e.g. `xy12345.us-east-1`)
-> To find this: open Snowflake in your browser (via app.snowflake.com, your
-> company's Okta/SSO portal, or wherever you normally sign in). In the
-> **bottom-left corner**, click your account/org name → hover over **Account**
-> → click **View account details**. Copy the account identifier shown there.
-> It will look like `xy12345.us-east-1` or `ORGNAME-ACCOUNTNAME` — either works.
->
-> **2. Username** — usually your email address (the one you log into Snowflake with).
->
-> **3. Warehouse name** (e.g. `COMPUTE_WH`)
-> To find this: open any **Worksheet** in Snowflake — there's a warehouse
-> selector dropdown near the top of the worksheet. It shows your currently
-> active warehouse and lets you pick from all warehouses you have access to.
-> Any warehouse will work — the MCP server only runs lightweight read-only queries.
->
-> **4. Authentication method** — pick one:
-> - **Browser SSO** (recommended — no extra setup, just approve a pop-up)
-> - **Key-pair credential file** (for headless/server use — you'll need the file path)
+```json
+{
+  "questions": [
+    {
+      "question": "What's your Snowflake account identifier?\n\nTo find it: open Snowflake in your browser (via app.snowflake.com, your company's Okta/SSO portal, or wherever you sign in). In the bottom-left corner, click your account/org name → hover over Account → click View account details. Copy the identifier — it looks like xy12345.us-east-1 or ORGNAME-ACCOUNTNAME (either format works).",
+      "header": "Account Identifier",
+      "options": []
+    },
+    {
+      "question": "What's your Snowflake username? (Usually the email you sign into Snowflake with)",
+      "header": "Username",
+      "options": []
+    },
+    {
+      "question": "Which Snowflake warehouse should the MCP server use?\n\nTo see your options: open any Worksheet in Snowflake — there's a warehouse selector dropdown near the top. It shows your active warehouse and all warehouses you have access to. Any of them will work — the MCP server only runs lightweight read-only queries.",
+      "header": "Warehouse Name",
+      "options": []
+    },
+    {
+      "question": "Which authentication method do you want to use?",
+      "header": "Auth Method",
+      "options": [
+        {
+          "label": "Browser SSO (Recommended)",
+          "description": "No extra setup — just approve a pop-up in your browser when connecting"
+        },
+        {
+          "label": "Key-pair credential file",
+          "description": "For headless/server use — you'll need the path to your credential file"
+        }
+      ]
+    }
+  ]
+}
+```
+
+If the user picks **key-pair credential file**, follow up and ask for the file path.
 
 ---
 
