@@ -11,6 +11,7 @@ import pytest
 os.environ.setdefault("SNOWFLAKE_ACCOUNT", "test123.us-east-1")
 os.environ.setdefault("SNOWFLAKE_USERNAME", "testuser")
 os.environ.setdefault("SNOWFLAKE_WAREHOUSE", "TEST_WH")
+os.environ.setdefault("SNOWFLAKE_ROLE", "ANALYST")
 
 from server.log_utils import LOG_FILE_PATH, setup_logging
 
@@ -136,7 +137,7 @@ def test_module_level_logger():
 
 
 def test_log_file_path():
-    assert Path.home() / ".snowflake-mcp" / "server.log" == LOG_FILE_PATH
+    assert Path.home() / ".snowflake_mcp" / "server.log" == LOG_FILE_PATH
 
 
 def test_file_handler_writes_to_correct_path(mock_config):

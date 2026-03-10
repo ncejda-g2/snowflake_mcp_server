@@ -144,7 +144,7 @@ If this fails, stop and troubleshoot before continuing.
 
 Ask the user for all of these at once:
 
-Call the tool with these four questions. Include the "how to find it" navigation
+Call the tool with these five questions. Include the "how to find it" navigation
 tips in the question text so the user sees the help right when they need it.
 
 ```json
@@ -163,6 +163,11 @@ tips in the question text so the user sees the help right when they need it.
     {
       "question": "Which Snowflake warehouse should the MCP server use?\n\nTo see your options: in Snowflake, click the \"+ New SQL File\" button (or the \"+\" button) to open a SQL Worksheet. There's a warehouse selector dropdown near the top — it shows your active warehouse and all warehouses you have access to. Any of them will work — the MCP server only runs lightweight read-only queries.",
       "header": "Warehouse Name",
+      "options": []
+    },
+    {
+      "question": "Which Snowflake role should the MCP server use?\n\nTo see your options: in a Snowflake SQL Worksheet, run: SELECT CURRENT_ROLE(); to see your current role, or click the role selector dropdown near the top of the worksheet to see all roles available to you. Pick one that has read access to the data you want to query.",
+      "header": "Role",
       "options": []
     },
     {
@@ -210,6 +215,7 @@ Add a new MCP server with these details:
 | `SNOWFLAKE_ACCOUNT`          | User's account ID  | Yes                                 |
 | `SNOWFLAKE_USERNAME`         | User's email       | Yes                                 |
 | `SNOWFLAKE_WAREHOUSE`        | Warehouse name     | Yes                                 |
+| `SNOWFLAKE_ROLE`             | Snowflake role     | Yes                                 |
 | `SNOWFLAKE_CREDENTIAL_FILE`  | Path to cred file  | Only if user chose key-pair auth    |
 
 ### How to add it
@@ -222,6 +228,7 @@ claude mcp add snowflake-readonly \
   -e SNOWFLAKE_ACCOUNT="<account>" \
   -e SNOWFLAKE_USERNAME="<username>" \
   -e SNOWFLAKE_WAREHOUSE="<warehouse>" \
+  -e SNOWFLAKE_ROLE="<role>" \
   -- <npx-command> -y snowflake-readonly-mcp@latest
 ```
 
@@ -244,7 +251,8 @@ The standard schema used by most clients (Claude Desktop, Cursor, Gemini CLI, et
       "env": {
         "SNOWFLAKE_ACCOUNT": "<account>",
         "SNOWFLAKE_USERNAME": "<username>",
-        "SNOWFLAKE_WAREHOUSE": "<warehouse>"
+        "SNOWFLAKE_WAREHOUSE": "<warehouse>",
+        "SNOWFLAKE_ROLE": "<role>"
       }
     }
   }
@@ -262,7 +270,8 @@ of `"mcpServers"`, a single `"command"` array, and `"environment"` instead of `"
       "environment": {
         "SNOWFLAKE_ACCOUNT": "<account>",
         "SNOWFLAKE_USERNAME": "<username>",
-        "SNOWFLAKE_WAREHOUSE": "<warehouse>"
+        "SNOWFLAKE_WAREHOUSE": "<warehouse>",
+        "SNOWFLAKE_ROLE": "<role>"
       }
     }
   }
@@ -289,7 +298,10 @@ Everything is configured. Tell the user:
 >
 > If the connection fails, the most common issues are:
 > - Wrong account identifier (should look like `xy12345.us-east-1`)
-> - Typo in the warehouse name
+> - Typo in the warehouse or role name
+> - Role doesn't have access to the data you're querying
 > - Browser SSO pop-up was blocked
+>
+> Check `~/.snowflake_mcp/server.log` for detailed error messages.
 >
 > If you found this helpful, please star the repo! https://github.com/ncejda-g2/snowflake_mcp_server"

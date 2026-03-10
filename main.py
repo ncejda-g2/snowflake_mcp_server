@@ -10,7 +10,12 @@ from server.log_utils import LOG_FILE_PATH, logger
 
 def main():
     """Main entry point."""
-    required_vars = ["SNOWFLAKE_ACCOUNT", "SNOWFLAKE_USERNAME", "SNOWFLAKE_WAREHOUSE"]
+    required_vars = [
+        "SNOWFLAKE_ACCOUNT",
+        "SNOWFLAKE_USERNAME",
+        "SNOWFLAKE_WAREHOUSE",
+        "SNOWFLAKE_ROLE",
+    ]
 
     missing_vars = [var for var in required_vars if not os.getenv(var)]
 
@@ -25,6 +30,7 @@ def main():
         logger.error('  export SNOWFLAKE_ACCOUNT="xy12345.us-east-1"')
         logger.error('  export SNOWFLAKE_USERNAME="user@company.com"')
         logger.error('  export SNOWFLAKE_WAREHOUSE="COMPUTE_WH"')
+        logger.error('  export SNOWFLAKE_ROLE="YOUR_ROLE"')
         sys.exit(1)
 
     logger.info(

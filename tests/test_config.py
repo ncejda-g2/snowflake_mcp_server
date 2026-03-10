@@ -15,13 +15,16 @@ class TestConfig:
     def test_config_creation_with_required_fields(self):
         """Test creating a config with all required fields."""
         config = Config(
-            account="test123.us-east-1", username="testuser", warehouse="TEST_WH"
+            account="test123.us-east-1",
+            username="testuser",
+            warehouse="TEST_WH",
+            role="ANALYST",
         )
 
         assert config.account == "test123.us-east-1"
         assert config.username == "testuser"
         assert config.warehouse == "TEST_WH"
-        assert config.role == "ML_DEVELOPER"  # default value
+        assert config.role == "ANALYST"
 
     def test_config_creation_with_all_fields(self):
         """Test creating a config with all fields specified."""
@@ -52,10 +55,12 @@ class TestConfig:
     def test_config_default_values(self):
         """Test that default values are set correctly."""
         config = Config(
-            account="test123.us-east-1", username="testuser", warehouse="TEST_WH"
+            account="test123.us-east-1",
+            username="testuser",
+            warehouse="TEST_WH",
+            role="ANALYST",
         )
 
-        assert config.role == "ML_DEVELOPER"
         assert config.host == "0.0.0.0"
         assert config.port == 8000
         assert config.transport == "stdio"
@@ -66,14 +71,19 @@ class TestConfig:
     def test_account_validator_empty(self):
         """Test account validator rejects empty string."""
         with pytest.raises(ValidationError) as exc_info:
-            Config(account="", username="testuser", warehouse="TEST_WH")
+            Config(account="", username="testuser", warehouse="TEST_WH", role="ANALYST")
 
         assert "Snowflake account is required" in str(exc_info.value)
 
     def test_account_validator_invalid_characters(self):
         """Test account validator rejects invalid characters."""
         with pytest.raises(ValidationError) as exc_info:
-            Config(account="test@123#invalid", username="testuser", warehouse="TEST_WH")
+            Config(
+                account="test@123#invalid",
+                username="testuser",
+                warehouse="TEST_WH",
+                role="ANALYST",
+            )
 
         assert "Invalid Snowflake account format" in str(exc_info.value)
 
@@ -89,7 +99,12 @@ class TestConfig:
         ]
 
         for account in valid_accounts:
-            config = Config(account=account, username="testuser", warehouse="TEST_WH")
+            config = Config(
+                account=account,
+                username="testuser",
+                warehouse="TEST_WH",
+                role="ANALYST",
+            )
             assert config.account == account
 
     def test_transport_validator_invalid(self):
@@ -99,6 +114,7 @@ class TestConfig:
                 account="test123",
                 username="testuser",
                 warehouse="TEST_WH",
+                role="ANALYST",
                 transport="websocket",
             )
 
@@ -111,6 +127,7 @@ class TestConfig:
                 account="test123",
                 username="testuser",
                 warehouse="TEST_WH",
+                role="ANALYST",
                 transport=transport,
             )
             assert config.transport == transport
@@ -120,7 +137,11 @@ class TestConfig:
         # Valid ports
         for port in [1, 80, 8080, 65535]:
             config = Config(
-                account="test123", username="testuser", warehouse="TEST_WH", port=port
+                account="test123",
+                username="testuser",
+                warehouse="TEST_WH",
+                role="ANALYST",
+                port=port,
             )
             assert config.port == port
 
@@ -131,13 +152,16 @@ class TestConfig:
                     account="test123",
                     username="testuser",
                     warehouse="TEST_WH",
+                    role="ANALYST",
                     port=port,
                 )
 
     @patch.dict(os.environ, {}, clear=True)
     def test_is_running_in_docker(self):
         """Test Docker detection."""
-        config = Config(account="test123", username="testuser", warehouse="TEST_WH")
+        config = Config(
+            account="test123", username="testuser", warehouse="TEST_WH", role="ANALYST"
+        )
 
         # Not in Docker by default
         with patch("os.path.exists", return_value=False):
@@ -157,7 +181,9 @@ class TestConfig:
     @patch.dict(os.environ, {}, clear=True)
     def test_is_running_in_docker_or_k8s(self):
         """Test Docker/Kubernetes detection."""
-        config = Config(account="test123", username="testuser", warehouse="TEST_WH")
+        config = Config(
+            account="test123", username="testuser", warehouse="TEST_WH", role="ANALYST"
+        )
 
         # Not in Docker/K8s by default
         with patch("os.path.exists", return_value=False):
@@ -180,6 +206,7 @@ class TestConfig:
             "SNOWFLAKE_ACCOUNT": "test123.us-east-1",
             "SNOWFLAKE_USERNAME": "testuser",
             "SNOWFLAKE_WAREHOUSE": "TEST_WH",
+            "SNOWFLAKE_ROLE": "ANALYST",
         },
         clear=True,
     )
@@ -190,7 +217,7 @@ class TestConfig:
         assert config.account == "test123.us-east-1"
         assert config.username == "testuser"
         assert config.warehouse == "TEST_WH"
-        assert config.role == "ML_DEVELOPER"  # default
+        assert config.role == "ANALYST"
 
     @patch.dict(
         os.environ,
@@ -234,12 +261,14 @@ class TestConfig:
         assert "SNOWFLAKE_ACCOUNT" in error_msg
         assert "SNOWFLAKE_USERNAME" in error_msg
         assert "SNOWFLAKE_WAREHOUSE" in error_msg
+        assert "SNOWFLAKE_ROLE" in error_msg
 
     @patch.dict(
         os.environ,
         {
             "SNOWFLAKE_ACCOUNT": "test123",
             "SNOWFLAKE_USERNAME": "testuser",
+            "SNOWFLAKE_ROLE": "ANALYST",
             # Missing SNOWFLAKE_WAREHOUSE
         },
         clear=True,
@@ -253,6 +282,7 @@ class TestConfig:
         assert "Missing required environment variables" in error_msg
         assert "SNOWFLAKE_WAREHOUSE" in error_msg
         assert "SNOWFLAKE_ACCOUNT" not in error_msg  # This one is present
+        assert "SNOWFLAKE_ROLE" not in error_msg  # This one is present
 
     @patch.dict(
         os.environ,
@@ -260,6 +290,31 @@ class TestConfig:
             "SNOWFLAKE_ACCOUNT": "test123.us-east-1",
             "SNOWFLAKE_USERNAME": "testuser",
             "SNOWFLAKE_WAREHOUSE": "TEST_WH",
+        },
+        clear=True,
+    )
+    def test_from_env_missing_role(self):
+        """Test from_env raises error when SNOWFLAKE_ROLE is missing."""
+        with pytest.raises(ValueError) as exc_info:
+            Config.from_env()
+
+        error_msg = str(exc_info.value)
+        assert "Missing required environment variables" in error_msg
+        assert "SNOWFLAKE_ROLE" in error_msg
+        assert "SNOWFLAKE_ACCOUNT" not in error_msg
+
+    def test_config_missing_role_field(self):
+        """Test Config raises validation error when role is not provided."""
+        with pytest.raises(ValidationError):
+            Config(account="test123", username="testuser", warehouse="TEST_WH")
+
+    @patch.dict(
+        os.environ,
+        {
+            "SNOWFLAKE_ACCOUNT": "test123.us-east-1",
+            "SNOWFLAKE_USERNAME": "testuser",
+            "SNOWFLAKE_WAREHOUSE": "TEST_WH",
+            "SNOWFLAKE_ROLE": "ANALYST",
             "DEBUG": "yes",
         },
         clear=True,
