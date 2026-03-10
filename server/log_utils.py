@@ -40,7 +40,7 @@ def setup_logging(config: Config | None = None) -> logging.Logger:
     """
     Set up logging configuration and return a logger instance.
 
-    Logs are written to both stderr and ~/.snowflake-mcp/server.log.
+    Logs are written to both stderr and ~/.snowflake_mcp/server.log.
 
     Args:
         config: Optional configuration object
@@ -49,10 +49,14 @@ def setup_logging(config: Config | None = None) -> logging.Logger:
         Configured logger instance
     """
     if not config:
-        config = Config.from_env()
+        try:
+            config = Config.from_env()
+        except Exception:
+            config = None
 
+    debug = config.debug if config else False
     log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-    log_level = logging.DEBUG if config.debug else logging.INFO
+    log_level = logging.DEBUG if debug else logging.INFO
 
     handlers: list[logging.Handler] = [logging.StreamHandler(sys.stderr)]
 
@@ -72,7 +76,7 @@ def setup_logging(config: Config | None = None) -> logging.Logger:
     logger = logging.getLogger("snowflake_mcp_server")
 
     # Adjust snowflake connector logging (it can be verbose)
-    if not config.debug:
+    if not debug:
         logging.getLogger("snowflake.connector").setLevel(logging.WARNING)
         logging.getLogger("urllib3").setLevel(logging.WARNING)
         logging.getLogger("botocore").setLevel(logging.WARNING)
