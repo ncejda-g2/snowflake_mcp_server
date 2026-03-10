@@ -145,12 +145,46 @@ If this fails, stop and troubleshoot before continuing.
 
 Ask the user for all of these at once:
 
-1. **Snowflake account identifier** (e.g. `xy12345.us-east-1`)
-2. **Username** (usually their email)
-3. **Warehouse name** (e.g. `COMPUTE_WH`)
-4. **Authentication method** — ask them to pick:
-   - **Browser SSO** (default — no extra setup, just approve in browser)
-   - **Key-pair credential file** (headless — then ask for the file path)
+Call the tool with these four questions. Include the "how to find it" navigation
+tips in the question text so the user sees the help right when they need it.
+
+```json
+{
+  "questions": [
+    {
+      "question": "What's your Snowflake account identifier?\n\nTo find it: open Snowflake in your browser (via app.snowflake.com, your company's Okta/SSO portal, or wherever you sign in). In the bottom-left corner, click your account/org name → hover over Account → click View account details. Copy the identifier — it looks like xy12345.us-east-1 or ORGNAME-ACCOUNTNAME (either format works).",
+      "header": "Account Identifier",
+      "options": []
+    },
+    {
+      "question": "What's your Snowflake username?\n\nTo find it: on the same View Account Details page from the previous step, look for the field labeled \"Login Name\" — that's your username.",
+      "header": "Username",
+      "options": []
+    },
+    {
+      "question": "Which Snowflake warehouse should the MCP server use?\n\nTo see your options: in Snowflake, click the \"+ New SQL File\" button (or the \"+\" button) to open a SQL Worksheet. There's a warehouse selector dropdown near the top — it shows your active warehouse and all warehouses you have access to. Any of them will work — the MCP server only runs lightweight read-only queries.",
+      "header": "Warehouse Name",
+      "options": []
+    },
+    {
+      "question": "Which authentication method do you want to use?",
+      "header": "Auth Method",
+      "options": [
+        {
+          "label": "Browser SSO (Recommended)",
+          "description": "No extra setup — just approve a pop-up in your browser when connecting"
+        },
+        {
+          "label": "Key-pair credential file",
+          "description": "For headless/server use — you'll need the path to your credential file"
+        }
+      ]
+    }
+  ]
+}
+```
+
+If the user picks **key-pair credential file**, follow up and ask for the file path.
 
 ---
 
@@ -165,7 +199,7 @@ Add a new MCP server with these details:
 path you found in Step 1, e.g. `/opt/homebrew/bin/npx` or
 `$HOME/.nvm/versions/node/v22.15.0/bin/npx`)
 
-**Arguments:** `["-y", "snowflake-readonly-mcp"]`
+**Arguments:** `["-y", "snowflake-readonly-mcp@latest"]`
 
 **Environment variables:**
 | Variable                     | Value              | Required?                           |
@@ -185,7 +219,7 @@ claude mcp add snowflake-readonly \
   -e SNOWFLAKE_ACCOUNT="<account>" \
   -e SNOWFLAKE_USERNAME="<username>" \
   -e SNOWFLAKE_WAREHOUSE="<warehouse>" \
-  -- <npx-command> -y snowflake-readonly-mcp
+  -- <npx-command> -y snowflake-readonly-mcp@latest
 ```
 
 **JSON config (most clients):**
@@ -193,13 +227,17 @@ claude mcp add snowflake-readonly \
 Most MCP clients use a JSON config file. Find yours and merge a new server entry.
 **Do NOT overwrite** other servers already defined.
 
+> **Global vs project config:** If your client supports both a user-level (global)
+> config and a per-project config, **always use the global config**. Snowflake
+> access isn't project-specific — the user will want it available everywhere.
+
 The standard schema used by most clients (Claude Desktop, Cursor, Gemini CLI, etc.):
 ```json
 {
   "mcpServers": {
     "snowflake-readonly": {
       "command": "<npx-command>",
-      "args": ["-y", "snowflake-readonly-mcp"],
+      "args": ["-y", "snowflake-readonly-mcp@latest"],
       "env": {
         "SNOWFLAKE_ACCOUNT": "<account>",
         "SNOWFLAKE_USERNAME": "<username>",
@@ -217,7 +255,7 @@ of `"mcpServers"`, a single `"command"` array, and `"environment"` instead of `"
   "mcp": {
     "snowflake-readonly": {
       "type": "local",
-      "command": ["<npx-command>", "-y", "snowflake-readonly-mcp"],
+      "command": ["<npx-command>", "-y", "snowflake-readonly-mcp@latest"],
       "environment": {
         "SNOWFLAKE_ACCOUNT": "<account>",
         "SNOWFLAKE_USERNAME": "<username>",
@@ -230,7 +268,7 @@ of `"mcpServers"`, a single `"command"` array, and `"environment"` instead of `"
 
 **If you're a client not listed here:** look up your own documentation for how
 to add a stdio-based MCP server. The payload is always the same — a command
-(`npx`), args (`-y snowflake-readonly-mcp`), and environment variables.
+(`npx`), args (`-y snowflake-readonly-mcp@latest`), and environment variables.
 
 **Show the user the final config diff before writing**, so they can confirm.
 
@@ -251,4 +289,4 @@ Everything is configured. Tell the user:
 > - Typo in the warehouse name
 > - Browser SSO pop-up was blocked
 >
-> If you found this helpful, consider starring the repo: https://github.com/ncejda-g2/snowflake_mcp_server"
+> If you found this helpful, please star the repo! https://github.com/ncejda-g2/snowflake_mcp_server"
