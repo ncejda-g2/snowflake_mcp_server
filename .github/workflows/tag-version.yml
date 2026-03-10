@@ -82,6 +82,10 @@ jobs:
           node-version: '22'
           registry-url: 'https://registry.npmjs.org'
 
+      - name: Upgrade npm
+        if: steps.version-check.outputs.version_changed == 'true'
+        run: npm install -g npm@latest
+
       - name: Publish to npm
         if: steps.version-check.outputs.version_changed == 'true'
         run: npm publish --provenance --access public
