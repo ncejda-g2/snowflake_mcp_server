@@ -5,6 +5,17 @@ All notable changes to the Snowflake MCP Server will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.14] - 2026-03-10
+
+### Improved
+- Agent setup guide: Better credential-finding instructions with inline navigation tips (how to find account ID, username, warehouse)
+- Agent setup guide: Use `@latest` tag for `snowflake-readonly-mcp` in all npx examples
+- Agent setup guide: Add global vs project config guidance
+- Agent setup guide: More enthusiastic star-the-repo CTA
+
+### Fixed
+- `uv.lock`: Sync version to match `pyproject.toml`
+
 ## [0.1.13] - 2026-03-10
 
 ### Added
