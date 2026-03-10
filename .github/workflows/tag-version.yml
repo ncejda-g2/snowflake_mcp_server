@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - 'pyproject.toml'
+      - 'package.json'
 
 permissions:
   contents: write

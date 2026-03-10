@@ -28,7 +28,7 @@ jobs:
           echo "$CHANGED_FILES"
 
           # Version bump only required when server/ source code changes
-          SRC_FILES=$(echo "$CHANGED_FILES" | grep -E '^server/|^main\.py$|^requirements.*\.txt$|^pyproject\.toml$|^uv\.lock$|^package\.json$|^bin/' || true)
+          SRC_FILES=$(echo "$CHANGED_FILES" | grep -E '^server/|^main\.py$|^requirements.*\.txt$|^uv\.lock$|^bin/' || true)
 
           if [ -n "$SRC_FILES" ]; then
             echo "🔧 Source changes detected — version bump required"
