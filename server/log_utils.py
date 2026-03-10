@@ -17,11 +17,15 @@ def _create_file_handler() -> RotatingFileHandler | None:
     """Create a rotating file handler, or None if it fails."""
     try:
         LOG_DIR.mkdir(parents=True, exist_ok=True)
+        # Restrict directory to owner-only (may contain sensitive query logs)
+        LOG_DIR.chmod(0o700)
         handler = RotatingFileHandler(
             LOG_FILE_PATH,
             maxBytes=5 * 1024 * 1024,  # 5 MB
             backupCount=2,
         )
+        # Restrict log file to owner-only read/write
+        LOG_FILE_PATH.chmod(0o600)
         return handler
     except Exception as e:
         # Never crash the server because of logging

@@ -19,7 +19,8 @@ class Config(BaseModel):
     # Key-pair auth (headless) — when set, takes priority over externalbrowser
     credential_file: str | None = Field(
         default=None,
-        description="Path to JSON credential file with key-pair auth (user, account, private_key_b64, private_key_passphrase, etc.)",
+        repr=False,
+        description="Path to JSON credential file with key-pair auth",
     )
 
     # MCP server settings
