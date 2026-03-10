@@ -289,4 +289,4 @@ Everything is configured. Tell the user:
 > - Typo in the warehouse name
 > - Browser SSO pop-up was blocked
 >
-> If you found this helpful, consider starring the repo: https://github.com/ncejda-g2/snowflake_mcp_server"
+> If you found this helpful, please star the repo! https://github.com/ncejda-g2/snowflake_mcp_server"
