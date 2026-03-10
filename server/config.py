@@ -14,7 +14,7 @@ class Config(BaseModel):
     )
     username: str = Field(description="Snowflake username")
     warehouse: str = Field(description="Compute warehouse to use")
-    role: str = Field(description="Snowflake role to use", default="ML_DEVELOPER")
+    role: str = Field(description="Snowflake role to use")
 
     # Key-pair auth (headless) — when set, takes priority over externalbrowser
     credential_file: str | None = Field(
@@ -77,9 +77,9 @@ class Config(BaseModel):
         account = os.getenv("SNOWFLAKE_ACCOUNT")
         username = os.getenv("SNOWFLAKE_USERNAME")
         warehouse = os.getenv("SNOWFLAKE_WAREHOUSE")
-        role = os.getenv("SNOWFLAKE_ROLE", "ML_DEVELOPER")
+        role = os.getenv("SNOWFLAKE_ROLE")
 
-        if not all([account, username, warehouse]):
+        if not all([account, username, warehouse, role]):
             missing = []
             if not account:
                 missing.append("SNOWFLAKE_ACCOUNT")
@@ -87,12 +87,14 @@ class Config(BaseModel):
                 missing.append("SNOWFLAKE_USERNAME")
             if not warehouse:
                 missing.append("SNOWFLAKE_WAREHOUSE")
+            if not role:
+                missing.append("SNOWFLAKE_ROLE")
             raise ValueError(
                 f"Missing required environment variables: {', '.join(missing)}"
             )
 
         # After validation, these cannot be None - help mypy understand
-        if account is None or username is None or warehouse is None:
+        if account is None or username is None or warehouse is None or role is None:
             raise ValueError("Required environment variables are not set")
 
         return cls(
