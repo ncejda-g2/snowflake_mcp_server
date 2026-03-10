@@ -5,6 +5,12 @@ All notable changes to the Snowflake MCP Server will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.17] - 2026-03-10
+
+### Fixed
+- `setup_logging()` now survives `Config.from_env()` failures — missing env vars no longer crash the server before the log file handler is created
+- Stale docstring referencing old `~/.snowflake-mcp/` path
+
 ## [0.1.16] - 2026-03-10
 
 ### Fixed
