@@ -169,7 +169,8 @@ Ask the user for these. Help them find values they don't know off the top of the
 
 If the user doesn't know their account identifier, walk them through this:
 
-> 1. Open [Snowsight](https://app.snowflake.com) in your browser
+> 1. Open Snowflake in your browser (via [app.snowflake.com](https://app.snowflake.com),
+>    your company's Okta/SSO portal, or wherever you normally sign in)
 > 2. In the **bottom-left corner**, click your account name / org name
 > 3. In the dropdown that opens, hover over **Account** and click **View account details**
 > 4. You'll see the **Account Identifier** — it looks like `xy12345.us-east-1`
