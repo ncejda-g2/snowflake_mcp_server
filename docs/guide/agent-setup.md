@@ -32,7 +32,11 @@ You need `npx` (ships with Node.js) to run the MCP server. Check if it's already
 which npx 2>/dev/null || where npx 2>/dev/null
 ```
 
-If found, record the path and **skip to Step 2**.
+If found → npx **is on your PATH**. Use just `npx` as the command in the MCP config
+(no absolute path needed). **Skip to Step 2.**
+
+> **Note:** `which` only finds executables that are on PATH, regardless of what the
+> path looks like. Even `/Users/you/.npm-global/bin/npx` is on PATH if `which` found it.
 
 ### 1b) Check common non-PATH locations
 
@@ -46,7 +50,8 @@ done
 ls "$HOME/.nvm/versions/node"/*/bin/npx 2>/dev/null
 ```
 
-If found anywhere, record the **absolute path**. Skip to Step 2.
+If found anywhere, record the **absolute path** — these locations are NOT on the
+shell's PATH, so you must use the full path as the command in the MCP config. Skip to Step 2.
 
 ### 1c) Install Node.js
 
@@ -135,9 +140,14 @@ Tell the user to install Node.js from https://nodejs.org and re-run this setup.
 
 If this fails, stop and troubleshoot before continuing.
 
-> **IMPORTANT:** Record whether npx is on PATH or only at an absolute path.
-> MCP clients do NOT inherit your shell's PATH, so if npx lives somewhere like
-> `$HOME/homebrew/bin/npx`, you must use that absolute path in Step 4.
+> **PATH vs absolute path — which to use in the MCP config:**
+>
+> - If `which npx` found it (Step 1a) → it's on PATH → use just `npx` as the command.
+>   Terminal-based clients (Claude Code, OpenCode, Gemini CLI) inherit your shell PATH.
+> - If npx was only found via probing (Step 1b) or freshly installed to a non-PATH
+>   location (Step 1c) → use the **absolute path** as the command.
+> - **GUI clients (Claude Desktop, Cursor)** may not inherit PATH even if `which` finds npx.
+>   If the server fails to start in a GUI client, try switching to the absolute path.
 
 ---
 
@@ -161,9 +171,10 @@ Add a new MCP server with these details:
 
 **Server name:** `snowflake-readonly`
 
-**Command:** `<npx-command>` (use `npx` if it's on PATH, otherwise the absolute
-path you found in Step 1, e.g. `/opt/homebrew/bin/npx` or
-`$HOME/.nvm/versions/node/v22.15.0/bin/npx`)
+**Command:** Use `npx` if it was found via `which` in Step 1a (it's on PATH).
+Only use the absolute path if npx was found via probing (Step 1b), freshly
+installed to a non-PATH location (Step 1c), or the client is a GUI app that
+doesn't inherit the shell's PATH.
 
 **Arguments:** `["-y", "snowflake-readonly-mcp"]`
 
