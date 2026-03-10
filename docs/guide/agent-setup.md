@@ -156,36 +156,33 @@ If this fails, stop and troubleshoot before continuing.
 
 ## Step 2 — Collect Snowflake Credentials
 
-Ask the user for these. Help them find values they don't know off the top of their head.
+Ask the user for the four items below **in a single question**. Include the
+"how to find it" tips directly in the question text so the user sees the help
+right when they need it. Don't ask them to go find values in a separate step.
 
-1. **Snowflake account identifier** (e.g. `xy12345.us-east-1`)
-2. **Username** (usually their email)
-3. **Warehouse name** (e.g. `COMPUTE_WH`)
-4. **Authentication method** — ask them to pick:
-   - **Browser SSO** (default — no extra setup, just approve in browser)
-   - **Key-pair credential file** (headless — then ask for the file path)
+Present something like:
 
-### How to find your account identifier
-
-If the user doesn't know their account identifier, walk them through this:
-
-> 1. Open Snowflake in your browser (via [app.snowflake.com](https://app.snowflake.com),
->    your company's Okta/SSO portal, or wherever you normally sign in)
-> 2. In the **bottom-left corner**, click your account name / org name
-> 3. In the dropdown that opens, hover over **Account** and click **View account details**
-> 4. You'll see the **Account Identifier** — it looks like `xy12345.us-east-1`
->    (account locator + cloud region) or `ORGNAME-ACCOUNTNAME` (org format)
-> 5. Either format works — copy and paste it
-
-### How to find your warehouse name
-
-If the user doesn't know their warehouse name:
-
-> 1. In Snowsight, click **Admin** in the left sidebar
-> 2. Click **Warehouses** — you'll see a list of all available warehouses
-> 3. Pick the one you typically use (e.g. `COMPUTE_WH`, `ANALYST_WH`)
-> 4. If you're unsure which to use, any warehouse you have access to will work —
->    the MCP server only runs read-only queries
+> I need a few details about your Snowflake account. Here's what I need and
+> where to find each one:
+>
+> **1. Account identifier** (e.g. `xy12345.us-east-1`)
+> To find this: open Snowflake in your browser (via app.snowflake.com, your
+> company's Okta/SSO portal, or wherever you normally sign in). In the
+> **bottom-left corner**, click your account/org name → hover over **Account**
+> → click **View account details**. Copy the account identifier shown there.
+> It will look like `xy12345.us-east-1` or `ORGNAME-ACCOUNTNAME` — either works.
+>
+> **2. Username** — usually your email address (the one you log into Snowflake with).
+>
+> **3. Warehouse name** (e.g. `COMPUTE_WH`)
+> To find this: open any **Worksheet** in Snowflake — there's a warehouse
+> selector dropdown near the top of the worksheet. It shows your currently
+> active warehouse and lets you pick from all warehouses you have access to.
+> Any warehouse will work — the MCP server only runs lightweight read-only queries.
+>
+> **4. Authentication method** — pick one:
+> - **Browser SSO** (recommended — no extra setup, just approve a pop-up)
+> - **Key-pair credential file** (for headless/server use — you'll need the file path)
 
 ---
 
