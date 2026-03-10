@@ -20,7 +20,26 @@ jobs:
       - name: Checkout main branch
         run: git fetch origin main:main
 
+      - name: Detect source changes
+        id: changes
+        run: |
+          CHANGED_FILES=$(git diff --name-only origin/main...HEAD)
+          echo "Changed files:"
+          echo "$CHANGED_FILES"
+
+          # Version bump only required when server/ source code changes
+          SRC_FILES=$(echo "$CHANGED_FILES" | grep -E '^server/|^main\.py$|^requirements.*\.txt$|^uv\.lock$|^bin/' || true)
+
+          if [ -n "$SRC_FILES" ]; then
+            echo "🔧 Source changes detected — version bump required"
+            echo "needs_version_bump=true" >> $GITHUB_OUTPUT
+          else
+            echo "📄 No server/ changes — skipping version bump checks"
+            echo "needs_version_bump=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Check version bump
+        if: steps.changes.outputs.needs_version_bump == 'true'
         id: version-check
         run: |
           # Get version from PR branch
@@ -49,6 +68,7 @@ jobs:
           echo "✅ Version bumped correctly: $MAIN_VERSION → $PR_VERSION"
 
       - name: Check README version badge
+        if: steps.changes.outputs.needs_version_bump == 'true'
         run: |
           # Get version from pyproject.toml
           PR_VERSION=$(grep -oP 'version = "\K[^"]+' pyproject.toml | head -1)
@@ -69,7 +89,30 @@ jobs:
 
           echo "✅ README version badge matches pyproject.toml"
 
+      - name: Check package.json version
+        if: steps.changes.outputs.needs_version_bump == 'true'
+        run: |
+          # Get version from pyproject.toml
+          PR_VERSION=$(grep -oP 'version = "\K[^"]+' pyproject.toml | head -1)
+
+          # Get version from package.json
+          PKG_VERSION=$(grep -oP '"version": "\K[^"]+' package.json || echo "")
+
+          echo "pyproject.toml version: $PR_VERSION"
+          echo "package.json version: $PKG_VERSION"
+
+          if [ "$PKG_VERSION" != "$PR_VERSION" ]; then
+            echo "❌ package.json version does not match pyproject.toml version!"
+            echo "Expected: $PR_VERSION"
+            echo "Found: $PKG_VERSION"
+            echo "Please update the version in package.json to match pyproject.toml"
+            exit 1
+          fi
+
+          echo "✅ package.json version matches pyproject.toml"
+
       - name: Check CHANGELOG update
+        if: steps.changes.outputs.needs_version_bump == 'true'
         run: |
           # Check if CHANGELOG.md exists
           if [ ! -f "CHANGELOG.md" ]; then
@@ -90,10 +133,15 @@ jobs:
 
       - name: All validation checks passed
         run: |
-          echo "✅ All PR validation checks passed!"
-          echo "- Version bumped"
-          echo "- README version badge updated"
-          echo "- CHANGELOG updated"
+          if [ "${{ steps.changes.outputs.needs_version_bump }}" != "true" ]; then
+            echo "✅ No source changes — version checks skipped"
+          else
+            echo "✅ All PR validation checks passed!"
+            echo "- Version bumped"
+            echo "- README version badge updated"
+            echo "- package.json version synced"
+            echo "- CHANGELOG updated"
+          fi
 
   lint:
     runs-on: ubuntu-latest

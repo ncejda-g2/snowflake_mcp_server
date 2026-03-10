@@ -119,9 +119,10 @@ NVM_NPX="$(dirname "$(nvm which current)")/npx" && echo "$NVM_NPX"
 
 Record this absolute path — you'll need it in Step 4.
 
-> **Why the absolute path matters:** nvm works by sourcing a shell function.
-> MCP clients launch processes directly without sourcing your shell profile,
-> so `npx` won't be on their PATH. You must use the full path like
+> **Why the absolute path matters for nvm:** nvm works by sourcing a shell
+> function — it doesn't place `npx` on a fixed PATH. Even terminal-based MCP
+> clients that inherit PATH won't find an nvm-managed `npx` unless the shell
+> profile has already been sourced. You must use the full path like
 > `$HOME/.nvm/versions/node/v22.15.0/bin/npx` in the MCP config.
 
 **Windows:**
@@ -136,8 +137,13 @@ Tell the user to install Node.js from https://nodejs.org and re-run this setup.
 If this fails, stop and troubleshoot before continuing.
 
 > **IMPORTANT:** Record whether npx is on PATH or only at an absolute path.
-> MCP clients do NOT inherit your shell's PATH, so if npx lives somewhere like
-> `$HOME/homebrew/bin/npx`, you must use that absolute path in Step 4.
+>
+> **Terminal-based MCP clients** (Claude Code, OpenCode, Gemini CLI, etc.) inherit
+> your shell's PATH, so just `npx` will work if `which npx` found it.
+>
+> **GUI-based MCP clients** (Claude Desktop, Cursor, etc.) launch processes outside
+> your shell and do NOT inherit PATH. If you're configuring one of these, you must
+> use the absolute path (e.g. `/opt/homebrew/bin/npx`) in the MCP config.
 
 ---
 
@@ -195,9 +201,13 @@ Add a new MCP server with these details:
 
 **Server name:** `snowflake-readonly`
 
-**Command:** `<npx-command>` (use `npx` if it's on PATH, otherwise the absolute
-path you found in Step 1, e.g. `/opt/homebrew/bin/npx` or
-`$HOME/.nvm/versions/node/v22.15.0/bin/npx`)
+**Command:** `<npx-command>` — choose based on your client type:
+- **Terminal-based clients** (Claude Code, OpenCode, Gemini CLI): use `npx` if
+  `which npx` found it — these clients inherit your shell's PATH.
+- **GUI-based clients** (Claude Desktop, Cursor): use the absolute path from
+  Step 1 (e.g. `/opt/homebrew/bin/npx`), since GUI apps don't inherit PATH.
+- **nvm users (any client)**: always use the absolute path
+  (e.g. `$HOME/.nvm/versions/node/v22.15.0/bin/npx`) — see the nvm note in Step 1.
 
 **Arguments:** `["-y", "snowflake-readonly-mcp@latest"]`
 
