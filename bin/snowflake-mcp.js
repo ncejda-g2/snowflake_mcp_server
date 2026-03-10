@@ -51,7 +51,7 @@ function startServer() {
     // Use uv to run the server
     child = spawn('uv', ['--directory', packageDir, 'run', 'snowflake-mcp'], {
       stdio: 'inherit',
-      env: process.env
+      env: { ...process.env, PYTHONUNBUFFERED: '1' }
     });
   } else {
     // Check if venv exists
@@ -69,7 +69,7 @@ function startServer() {
     const venvPython = path.join(venvPath, process.platform === 'win32' ? 'Scripts' : 'bin', 'python');
     child = spawn(venvPython, ['-m', 'server.app'], {
       stdio: 'inherit',
-      env: process.env,
+      env: { ...process.env, PYTHONUNBUFFERED: '1' },
       cwd: packageDir
     });
   }
