@@ -60,25 +60,31 @@ Snowflake MCP Server bridges the gap between your Snowflake data warehouse and A
 - 🛡️ **Query Validation**: Comprehensive SQL validation before execution
 - 🎯 **Responsible Token Management**: Lightweight outputs to minimize token usage
 
-## 🚀 Quick Start
+## 🚀 Easy Setup For LLM Agents
 
-### Option 1: npx (Recommended)
+Already in Claude Code, OpenCode, Cursor, or another AI coding agent? Paste this into your agent:
 
-No cloning or virtual environment needed — just configure your MCP client (see [Configuration](#configuration) below).
+```
+Set up the Snowflake MCP server for me by following this guide:
+https://raw.githubusercontent.com/ncejda-g2/snowflake_mcp_server/main/docs/guide/agent-setup.md
+```
+
+Your agent will walk you through everything interactively — including installing Node.js and Homebrew if needed. No manual config editing required.
 
 <details>
-<summary><b>Option 2: From Source</b></summary>
+<summary><b>Manual setup & from-source install</b></summary>
+
+### npx (no install needed)
+
+Just configure your MCP client using the examples in the [Configuration](#configuration) section below.
+
+### From Source
 
 ```bash
-# Clone the repository
 git clone git@github.com:ncejda-g2/snowflake_mcp_server.git
 cd snowflake_mcp_server
-
-# Create and activate virtual environment
 python3 -m venv snowflake_mcp_env
 source snowflake_mcp_env/bin/activate  # On Windows: snowflake_mcp_env\Scripts\activate
-
-# Install dependencies
 pip install -r requirements.txt
 ```
 
