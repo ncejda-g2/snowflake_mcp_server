@@ -17,8 +17,11 @@
 
 Greet the user briefly:
 
-> "Setting up the Snowflake MCP Server — secure, read-only access to your Snowflake warehouse.
-> I'll walk you through everything, including installing any missing prerequisites. Let's go."
+> "Hey! Let's get you set up with the Snowflake MCP Server — you'll be able to
+> explore schemas, run queries, and analyze your data right from this chat.
+>
+> I'll handle everything, including installing any missing prerequisites. This usually
+> takes just a couple minutes. Let's do it!"
 
 ---
 
@@ -153,7 +156,7 @@ If this fails, stop and troubleshoot before continuing.
 
 ## Step 2 — Collect Snowflake Credentials
 
-Ask the user for all of these at once:
+Ask the user for these. Help them find values they don't know off the top of their head.
 
 1. **Snowflake account identifier** (e.g. `xy12345.us-east-1`)
 2. **Username** (usually their email)
@@ -161,6 +164,27 @@ Ask the user for all of these at once:
 4. **Authentication method** — ask them to pick:
    - **Browser SSO** (default — no extra setup, just approve in browser)
    - **Key-pair credential file** (headless — then ask for the file path)
+
+### How to find your account identifier
+
+If the user doesn't know their account identifier, walk them through this:
+
+> 1. Open [Snowsight](https://app.snowflake.com) in your browser
+> 2. In the **bottom-left corner**, click your account name / org name
+> 3. In the dropdown that opens, hover over **Account** and click **View account details**
+> 4. You'll see the **Account Identifier** — it looks like `xy12345.us-east-1`
+>    (account locator + cloud region) or `ORGNAME-ACCOUNTNAME` (org format)
+> 5. Either format works — copy and paste it
+
+### How to find your warehouse name
+
+If the user doesn't know their warehouse name:
+
+> 1. In Snowsight, click **Admin** in the left sidebar
+> 2. Click **Warehouses** — you'll see a list of all available warehouses
+> 3. Pick the one you typically use (e.g. `COMPUTE_WH`, `ANALYST_WH`)
+> 4. If you're unsure which to use, any warehouse you have access to will work —
+>    the MCP server only runs read-only queries
 
 ---
 
