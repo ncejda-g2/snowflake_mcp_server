@@ -1,5 +1,12 @@
 # Snowflake MCP Server — Agent Setup Guide
 
+> **IMPORTANT:** Fetch this file with `curl`, not with WebFetch or similar tools that
+> summarize content. The exact commands and paths in this guide must be preserved verbatim.
+>
+> ```bash
+> curl -fsSL https://raw.githubusercontent.com/ncejda-g2/snowflake_mcp_server/main/docs/guide/agent-setup.md
+> ```
+
 > You're an LLM agent helping a user set up the Snowflake MCP Server.
 > Walk through each step interactively — ask questions, confirm choices, and handle edge cases.
 > Do not skip steps. If something fails, troubleshoot before moving on.
