@@ -175,12 +175,15 @@ Replace:
 <details>
 <summary><b>Claude Desktop</b></summary>
 
+**One-click install:** Download the [latest `.mcpb` extension](https://github.com/ncejda-g2/snowflake_mcp_server/releases/latest/download/snowflake_mcp_server.mcpb) and double-click it. Claude Desktop will prompt you for your Snowflake credentials.
+
+<details>
+<summary>Manual configuration (advanced)</summary>
+
 Edit your configuration file:
 - macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
 - Windows: `%APPDATA%\Claude\claude_desktop_config.json`
 - Linux: `~/.config/claude/claude_desktop_config.json`
-
-**Using uvx (Recommended):**
 
 ```json
 {
@@ -192,61 +195,16 @@ Edit your configuration file:
         "SNOWFLAKE_ACCOUNT": "your-account",
         "SNOWFLAKE_USERNAME": "your-email@company.com",
         "SNOWFLAKE_WAREHOUSE": "YOUR_WAREHOUSE",
-        "SNOWFLAKE_ROLE": "YOUR_ROLE",
-        "SNOWFLAKE_CREDENTIAL_FILE": "/path/to/credentials.json"  // optional — omit to use browser SSO
+        "SNOWFLAKE_ROLE": "YOUR_ROLE"
       }
     }
   }
 }
 ```
 
-**Using npx:**
+Requires [uv](https://docs.astral.sh/uv/getting-started/installation/).
 
-```json
-{
-  "mcpServers": {
-    "snowflake-readonly": {
-      "command": "npx",
-      "args": ["-y", "snowflake-readonly-mcp"],
-      "env": {
-        "SNOWFLAKE_ACCOUNT": "your-account",
-        "SNOWFLAKE_USERNAME": "your-email@company.com",
-        "SNOWFLAKE_WAREHOUSE": "YOUR_WAREHOUSE",
-        "SNOWFLAKE_ROLE": "YOUR_ROLE",
-        "SNOWFLAKE_CREDENTIAL_FILE": "/path/to/credentials.json"  // optional — omit to use browser SSO
-      }
-    }
-  }
-}
-```
-
-**Using local clone:**
-
-```json
-{
-  "mcpServers": {
-    "snowflake-readonly": {
-      "command": "/path/to/snowflake_mcp_server/snowflake_mcp_env/bin/python",
-      "args": ["/path/to/snowflake_mcp_server/main.py"],
-      "env": {
-        "SNOWFLAKE_ACCOUNT": "your-account",
-        "SNOWFLAKE_USERNAME": "your-email@company.com",
-        "SNOWFLAKE_WAREHOUSE": "YOUR_WAREHOUSE",
-        "SNOWFLAKE_ROLE": "YOUR_ROLE",
-        "SNOWFLAKE_CREDENTIAL_FILE": "/path/to/credentials.json"  // optional — omit to use browser SSO
-      }
-    }
-  }
-}
-```
-
-Replace:
-- `/path/to/snowflake_mcp_server`: Absolute path to your cloned repository (local clone only)
-- `your-account`: Your Snowflake account identifier (e.g., `xy12345.us-east-1`)
-- `your-email@company.com`: Your Snowflake username
-- `YOUR_WAREHOUSE`: Your Snowflake warehouse name
-- `YOUR_ROLE`: Your Snowflake role (e.g., `ANALYST`, `PUBLIC`)
-- `SNOWFLAKE_CREDENTIAL_FILE` *(optional)*: Path to a JSON credential file for headless key-pair auth (omit to use browser SSO)
+</details>
 
 </details>
 

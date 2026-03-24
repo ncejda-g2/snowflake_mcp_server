@@ -112,6 +112,22 @@ If the user picks **key-pair credential file**, follow up and ask for the file p
 ## Step 3 — Add the MCP Server to Your Client
 
 You are already running inside an MCP client — you know which one you are.
+
+### Claude Desktop — one-click install
+
+If you are running inside **Claude Desktop**, skip the JSON config entirely.
+Tell the user:
+
+> "Download the extension file and double-click it to install:
+> https://github.com/ncejda-g2/snowflake_mcp_server/releases/latest/download/snowflake_mcp_server.mcpb
+>
+> Claude Desktop will open an install dialog and ask for your Snowflake credentials.
+> After installing, restart Claude Desktop and you're done."
+
+Then skip to **Step 4 — Wrap Up**.
+
+### All other clients
+
 Add a new MCP server with these details:
 
 **Server name:** `snowflake-readonly`
@@ -138,7 +154,7 @@ claude mcp add snowflake-readonly \
   -- uvx snowflake-readonly-mcp
 ```
 
-**Standard JSON config** (Claude Desktop, Cursor, Gemini CLI, etc.):
+**Standard JSON config** (Cursor, Gemini CLI, etc.):
 ```json
 {
   "mcpServers": {
