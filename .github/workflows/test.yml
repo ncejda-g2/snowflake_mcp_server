@@ -277,16 +277,18 @@ jobs:
       - name: Test MCPB bundle simulation
         shell: bash
         run: |
-          mkdir -p /tmp/mcpb-test
-          cp -r server pyproject.toml uv.lock main.py /tmp/mcpb-test/
-          uv run --python ${{ matrix.python-version }} --directory /tmp/mcpb-test python -c "
-          import subprocess, sys
+          MCPB_DIR="${RUNNER_TEMP}/mcpb-test"
+          mkdir -p "$MCPB_DIR"
+          cp -r server pyproject.toml uv.lock main.py "$MCPB_DIR/"
+          uv run --python ${{ matrix.python-version }} --directory "$MCPB_DIR" python -c "
+          import subprocess, sys, os, tempfile
+          mcpb_dir = os.environ.get('RUNNER_TEMP', tempfile.gettempdir()) + '/mcpb-test'
           proc = subprocess.Popen(
               [sys.executable, '-m', 'server'],
               stdin=subprocess.DEVNULL,
               stdout=subprocess.PIPE,
               stderr=subprocess.PIPE,
-              cwd='/tmp/mcpb-test',
+              cwd=mcpb_dir,
           )
           try:
               _, stderr = proc.communicate(timeout=10)
