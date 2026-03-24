@@ -241,7 +241,7 @@ jobs:
           from server.config import Config
           from server.schema_cache import SchemaCache
           from server.snowflake_connection import SnowflakeConnection
-          from server.log_utils import setup_logger
+          from server.log_utils import setup_logging
           print('All core imports OK')
           "
 
