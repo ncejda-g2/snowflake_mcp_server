@@ -3,8 +3,8 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "snowflake_mcp_server"
-version = "0.1.17"
+name = "snowflake-readonly-mcp"
+version = "0.1.18"
 description = "A Snowflake read-only MCP server with key-pair and browser SSO authentication"
 authors = [{ name = "Nicholas Cejda", email = "ncejda@g2.com" }]
 requires-python = ">=3.12"
@@ -32,8 +32,9 @@ dev = [
   ]
 
 [project.scripts]
+snowflake-readonly-mcp = "server.__main__:main"
+snowflake-mcp = "server.__main__:main"
 server = "server.app:main"
-snowflake-mcp = "main:main"
 
 [tool.ruff]
 target-version = "py312"
@@ -66,7 +67,10 @@ skip-magic-trailing-comma = false
 line-ending = "auto"
 
 [tool.ruff.lint.isort]
-known-first-party = ["snowflake_mcp_server", "server"]
+known-first-party = ["snowflake_readonly_mcp", "server"]
+
+[tool.hatch.build]
+exclude = ["snowflake_mcp_env/"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["server"]

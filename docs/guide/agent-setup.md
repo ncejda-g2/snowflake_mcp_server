@@ -15,11 +15,84 @@ Greet the user briefly:
 
 ---
 
-## Step 1 — Ensure npx Is Available
+## Step 1 — Choose Install Method
+
+Ask which install method the user prefers:
+
+```json
+{
+  "questions": [
+    {
+      "question": "How would you like to install the Snowflake MCP Server?",
+      "header": "Install Method",
+      "options": [
+        {
+          "label": "uvx (Recommended)",
+          "description": "Python-based — no Node.js required. One install command, no sudo needed."
+        },
+        {
+          "label": "npx",
+          "description": "Node.js-based — uses npx to run the server. Works if you already have Node.js."
+        }
+      ]
+    }
+  ]
+}
+```
+
+Based on the answer, follow **Step 1a** (uvx) or **Step 1b** (npx).
+
+---
+
+### Step 1a — Install uv (uvx path)
+
+You need `uvx` (ships with `uv`) to run the MCP server. Check if it's already installed.
+
+```bash
+which uvx 2>/dev/null || where uvx 2>/dev/null
+```
+
+If found, record the path and **skip to Step 2**.
+
+If not found, install uv:
+
+**macOS / Linux:**
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+No sudo required. Installs to `~/.local/bin/`.
+
+After install, ensure `~/.local/bin` is on PATH:
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+**Windows:**
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+**Verify:**
+```bash
+uvx --version
+```
+
+If this fails, stop and troubleshoot before continuing.
+
+> **GUI-based MCP clients** (Claude Desktop, Cursor) launch processes outside
+> your shell and do NOT inherit PATH. Record the absolute path to `uvx`
+> (e.g. `~/.local/bin/uvx`) — you'll need it in Step 3.
+
+**Skip to Step 2.**
+
+---
+
+### Step 1b — Install npx (npx path)
 
 You need `npx` (ships with Node.js) to run the MCP server. Check if it's already installed.
 
-### 1a) Check PATH
+#### Check PATH
 
 ```bash
 which npx 2>/dev/null || where npx 2>/dev/null
@@ -27,7 +100,7 @@ which npx 2>/dev/null || where npx 2>/dev/null
 
 If found, record the path and **skip to Step 2**.
 
-### 1b) Check common non-PATH locations
+#### Check common non-PATH locations
 
 If `which npx` returned nothing, probe these paths:
 
@@ -41,7 +114,7 @@ ls "$HOME/.nvm/versions/node"/*/bin/npx 2>/dev/null
 
 If found anywhere, record the **absolute path**. Skip to Step 2.
 
-### 1c) Install Node.js
+#### Install Node.js
 
 If npx isn't installed at all, install it.
 
@@ -110,7 +183,7 @@ Find the exact path:
 NVM_NPX="$(dirname "$(nvm which current)")/npx" && echo "$NVM_NPX"
 ```
 
-Record this absolute path — you'll need it in Step 4.
+Record this absolute path — you'll need it in Step 3.
 
 > **Why the absolute path matters for nvm:** nvm works by sourcing a shell
 > function — it doesn't place `npx` on a fixed PATH. Even terminal-based MCP
@@ -121,7 +194,7 @@ Record this absolute path — you'll need it in Step 4.
 **Windows:**
 Tell the user to install Node.js from https://nodejs.org and re-run this setup.
 
-### 1d) Verify
+#### Verify
 
 ```bash
 <npx-path> --version
@@ -199,13 +272,75 @@ Add a new MCP server with these details:
 
 **Server name:** `snowflake-readonly`
 
+### If using uvx (from Step 1a)
+
+**Command:** `uvx` (or the absolute path to `uvx` for GUI-based clients)
+**Arguments:** `["snowflake-readonly-mcp"]`
+
+**Environment variables:**
+| Variable                     | Value              | Required?                           |
+| ---------------------------- | ------------------ | ----------------------------------- |
+| `SNOWFLAKE_ACCOUNT`          | User's account ID  | Yes                                 |
+| `SNOWFLAKE_USERNAME`         | User's email       | Yes                                 |
+| `SNOWFLAKE_WAREHOUSE`        | Warehouse name     | Yes                                 |
+| `SNOWFLAKE_ROLE`             | Snowflake role     | Yes                                 |
+| `SNOWFLAKE_CREDENTIAL_FILE`  | Path to cred file  | Only if user chose key-pair auth    |
+
+**CLI command (e.g. Claude Code):**
+```bash
+claude mcp add snowflake-readonly \
+  -e SNOWFLAKE_ACCOUNT="<account>" \
+  -e SNOWFLAKE_USERNAME="<username>" \
+  -e SNOWFLAKE_WAREHOUSE="<warehouse>" \
+  -e SNOWFLAKE_ROLE="<role>" \
+  -- uvx snowflake-readonly-mcp
+```
+
+**Standard JSON config** (Claude Desktop, Cursor, Gemini CLI, etc.):
+```json
+{
+  "mcpServers": {
+    "snowflake-readonly": {
+      "command": "uvx",
+      "args": ["snowflake-readonly-mcp"],
+      "env": {
+        "SNOWFLAKE_ACCOUNT": "<account>",
+        "SNOWFLAKE_USERNAME": "<username>",
+        "SNOWFLAKE_WAREHOUSE": "<warehouse>",
+        "SNOWFLAKE_ROLE": "<role>"
+      }
+    }
+  }
+}
+```
+
+**OpenCode JSON** (different schema):
+```jsonc
+{
+  "mcp": {
+    "snowflake-readonly": {
+      "type": "local",
+      "command": ["uvx", "snowflake-readonly-mcp"],
+      "environment": {
+        "SNOWFLAKE_ACCOUNT": "<account>",
+        "SNOWFLAKE_USERNAME": "<username>",
+        "SNOWFLAKE_WAREHOUSE": "<warehouse>",
+        "SNOWFLAKE_ROLE": "<role>"
+      }
+    }
+  }
+}
+```
+
+### If using npx (from Step 1b)
+
 **Command:** `<npx-command>` — choose based on your client type:
 - **Terminal-based clients** (Claude Code, OpenCode, Gemini CLI): use `npx` if
   `which npx` found it — these clients inherit your shell's PATH.
 - **GUI-based clients** (Claude Desktop, Cursor): use the absolute path from
-  Step 1 (e.g. `/opt/homebrew/bin/npx`), since GUI apps don't inherit PATH.
+  Step 1b (e.g. `/opt/homebrew/bin/npx`), since GUI apps don't inherit PATH.
 - **nvm users (any client)**: always use the absolute path
-  (e.g. `$HOME/.nvm/versions/node/v22.15.0/bin/npx`) — see the nvm note in Step 1.
+  (e.g. `$HOME/.nvm/versions/node/v22.15.0/bin/npx`) — see the nvm note in Step 1b.
 
 **Arguments:** `["-y", "snowflake-readonly-mcp@latest"]`
 
@@ -218,10 +353,6 @@ Add a new MCP server with these details:
 | `SNOWFLAKE_ROLE`             | Snowflake role     | Yes                                 |
 | `SNOWFLAKE_CREDENTIAL_FILE`  | Path to cred file  | Only if user chose key-pair auth    |
 
-### How to add it
-
-Use whichever method your client supports. Some common patterns:
-
 **CLI command (e.g. Claude Code):**
 ```bash
 claude mcp add snowflake-readonly \
@@ -232,16 +363,7 @@ claude mcp add snowflake-readonly \
   -- <npx-command> -y snowflake-readonly-mcp@latest
 ```
 
-**JSON config (most clients):**
-
-Most MCP clients use a JSON config file. Find yours and merge a new server entry.
-**Do NOT overwrite** other servers already defined.
-
-> **Global vs project config:** If your client supports both a user-level (global)
-> config and a per-project config, **always use the global config**. Snowflake
-> access isn't project-specific — the user will want it available everywhere.
-
-The standard schema used by most clients (Claude Desktop, Cursor, Gemini CLI, etc.):
+**Standard JSON config** (Claude Desktop, Cursor, Gemini CLI, etc.):
 ```json
 {
   "mcpServers": {
@@ -259,8 +381,7 @@ The standard schema used by most clients (Claude Desktop, Cursor, Gemini CLI, et
 }
 ```
 
-Some clients use a different schema. For example, OpenCode uses `"mcp"` instead
-of `"mcpServers"`, a single `"command"` array, and `"environment"` instead of `"env"`:
+**OpenCode JSON** (different schema):
 ```jsonc
 {
   "mcp": {
@@ -278,9 +399,20 @@ of `"mcpServers"`, a single `"command"` array, and `"environment"` instead of `"
 }
 ```
 
+### How to add it
+
+Use whichever method your client supports — the CLI command or JSON config above.
+
+**JSON config:** Find your client's config file and merge a new server entry.
+**Do NOT overwrite** other servers already defined.
+
+> **Global vs project config:** If your client supports both a user-level (global)
+> config and a per-project config, **always use the global config**. Snowflake
+> access isn't project-specific — the user will want it available everywhere.
+
 **If you're a client not listed here:** look up your own documentation for how
-to add a stdio-based MCP server. The payload is always the same — a command
-(`npx`), args (`-y snowflake-readonly-mcp@latest`), and environment variables.
+to add a stdio-based MCP server. The payload is always the same — a command,
+args, and environment variables.
 
 **Show the user the final config diff before writing**, so they can confirm.
 
@@ -301,6 +433,8 @@ Everything is configured. Tell the user:
 > - Typo in the warehouse or role name
 > - Role doesn't have access to the data you're querying
 > - Browser SSO pop-up was blocked
+> - If the log file doesn't exist (`~/.snowflake_mcp/server.log`), the server
+>   never started — check that `uvx` or `npx` is on PATH or use the absolute path
 >
 > Check `~/.snowflake_mcp/server.log` for detailed error messages.
 >

@@ -1344,8 +1344,8 @@ wheels = [
 ]
 
 [[package]]
-name = "snowflake-mcp-server"
-version = "0.1.15"
+name = "snowflake-readonly-mcp"
+version = "0.1.18"
 source = { editable = "." }
 dependencies = [
     { name = "cachetools" },
