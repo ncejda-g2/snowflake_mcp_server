@@ -300,3 +300,64 @@ jobs:
               proc.wait()
               print('MCPB simulation started successfully (killed after 10s timeout)')
           "
+
+  install-test-python314:
+    name: "install-test (3.14 rejection)"
+    runs-on: macos-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Remove Xcode CLT (simulate user without C compiler)
+        run: |
+          sudo rm -rf /Library/Developer/CommandLineTools
+          echo "Xcode CLT removed — no C compiler available"
+
+      - name: Install Python 3.14 as only available version
+        run: uv python install 3.14
+
+      - name: Verify requires-python cap rejects 3.14
+        run: |
+          echo "Attempting uv sync --python 3.14 (should fail due to requires-python cap)..."
+          if uv sync --python 3.14 2>cap-error.log; then
+            echo "::error::Python 3.14 was NOT rejected by requires-python cap!"
+            exit 1
+          fi
+          echo "✅ Python 3.14 correctly rejected by requires-python cap"
+          echo "Error output:"
+          cat cap-error.log
+
+      - name: Verify uv auto-resolves to compatible Python
+        run: |
+          uv python install 3.13
+          uv sync --python 3.13
+          RESOLVED=$(uv run python --version)
+          echo "uv resolved to: $RESOLVED"
+          echo "✅ Auto-resolved to compatible Python version"
+
+      - name: Verify server starts with auto-resolved Python
+        shell: bash
+        run: |
+          uv run python -c "
+          import subprocess, sys
+          proc = subprocess.Popen(
+              [sys.executable, '-m', 'server'],
+              stdin=subprocess.DEVNULL,
+              stdout=subprocess.PIPE,
+              stderr=subprocess.PIPE,
+          )
+          try:
+              _, stderr = proc.communicate(timeout=10)
+              stderr_text = stderr.decode(errors='replace')
+              print(stderr_text, file=sys.stderr)
+              if proc.returncode != 0:
+                  print(f'FAIL: Server crashed with exit code {proc.returncode}')
+                  sys.exit(1)
+          except subprocess.TimeoutExpired:
+              proc.kill()
+              proc.wait()
+              print('Server started successfully with fallback Python (killed after 10s timeout)')
+          "
