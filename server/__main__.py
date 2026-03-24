@@ -99,7 +99,7 @@ def _start_degraded(error_message: str, log_file_path: str | None = None) -> Non
     for tool_name, tool_desc in _real_tool_names:
 
         def _make_stub(name: str, desc: str) -> Callable[..., str]:
-            def stub(**_kwargs: Any) -> str:
+            def stub() -> str:
                 return (
                     f"❌ Cannot run '{name}' — server failed to start.\n\n"
                     f"Error: {_error}\n\n"
