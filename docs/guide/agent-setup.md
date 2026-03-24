@@ -100,47 +100,148 @@ export NVM_DIR="$HOME/.nvm"
 nvm install --lts
 ```
 
-After install, npx will be at:
+After install, npx and node will be at:
 ```
 $HOME/.nvm/versions/node/v<VERSION>/bin/npx
+$HOME/.nvm/versions/node/v<VERSION>/bin/node
 ```
 
-Find the exact path:
+Find the exact paths and record **both the npx path and its parent directory**:
 ```bash
-NVM_NPX="$(dirname "$(nvm which current)")/npx" && echo "$NVM_NPX"
+NVM_BIN="$(dirname "$(nvm which current)")"
+echo "npx path:  $NVM_BIN/npx"
+echo "node path: $NVM_BIN/node"
+echo "bin dir:   $NVM_BIN"
 ```
 
-Record this absolute path — you'll need it in Step 4.
+Record both:
+- **npx absolute path** — you'll use this as the command in Step 4
+- **bin directory** — you'll need this to set PATH in Step 4 so `node` is
+  discoverable
 
-> **Why the absolute path matters for nvm:** nvm works by sourcing a shell
-> function — it doesn't place `npx` on a fixed PATH. Even terminal-based MCP
-> clients that inherit PATH won't find an nvm-managed `npx` unless the shell
-> profile has already been sourced. You must use the full path like
-> `$HOME/.nvm/versions/node/v22.15.0/bin/npx` in the MCP config.
+> **⚠️ Why nvm + GUI clients cause silent failures:** nvm works by sourcing a
+> shell function — it doesn't place `node` or `npx` on a system-wide PATH.
+> GUI-based MCP clients (Claude Desktop, Cursor) never source your shell profile,
+> so even with the absolute path to `npx`, the spawned process can't find `node`.
+> The server fails silently with no visible error. Step 4 shows how to fix this
+> by injecting the nvm bin directory into the `PATH` env var of your MCP config.
 
 **Windows:**
 Tell the user to install Node.js from https://nodejs.org and re-run this setup.
 
-### 1d) Verify
+### 1d) Verify both npx AND node
+
+Both `npx` and `node` must be reachable. `npx` downloads the package, but the
+package's entry script (`#!/usr/bin/env node`) needs `node` on PATH to execute.
 
 ```bash
 <npx-path> --version
+# Also verify node — it MUST be in the same directory:
+"$(dirname "<npx-path>")/node" --version
 ```
 
-If this fails, stop and troubleshoot before continuing.
+If either fails, stop and troubleshoot before continuing.
 
-> **IMPORTANT:** Record whether npx is on PATH or only at an absolute path.
+Record:
+1. The **absolute path to npx** (e.g. `/opt/homebrew/bin/npx`)
+2. The **directory containing both npx and node** (e.g. `/opt/homebrew/bin`)
+   — you'll need this in Step 4.
+
+> **IMPORTANT: PATH visibility varies by client type.**
 >
 > **Terminal-based MCP clients** (Claude Code, OpenCode, Gemini CLI, etc.) inherit
 > your shell's PATH, so just `npx` will work if `which npx` found it.
 >
 > **GUI-based MCP clients** (Claude Desktop, Cursor, etc.) launch processes outside
-> your shell and do NOT inherit PATH. If you're configuring one of these, you must
-> use the absolute path (e.g. `/opt/homebrew/bin/npx`) in the MCP config.
+> your shell and do NOT inherit PATH. You must use the absolute path to `npx` AND
+> ensure `node` is discoverable — see Step 4 for how to set this up.
+>
+> **nvm users — critical:** nvm places `node` and `npx` in a version-specific
+> directory (e.g. `~/.nvm/versions/node/v22.15.0/bin/`) that is only on PATH
+> when your shell profile has been sourced. GUI apps never source shell profiles,
+> so `node` will be invisible to them. Step 4 shows how to fix this with a `PATH`
+> env var in your MCP config.
 
 ---
 
-## Step 2 — Collect Snowflake Credentials
+## Step 2 — Ensure uv and Python Are Available
+
+The MCP server is a Python application managed by [uv](https://docs.astral.sh/uv/).
+After `npx` downloads the package, the Node.js wrapper calls `uv run` to start the
+Python server. Both `uv` and a compatible Python version (≥3.12, <3.14) must be
+available. **Neither requires sudo.**
+
+### 2a) Check for uv
+
+```bash
+which uv 2>/dev/null || where uv 2>/dev/null
+```
+
+If found, record the absolute path and check the version:
+```bash
+uv --version
+```
+
+If `uv` is already installed, **skip to 2c**.
+
+### 2b) Install uv
+
+uv installs to `~/.local/bin` — no sudo required on any platform.
+
+**macOS / Linux:**
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+After install, ensure `~/.local/bin` is on your PATH. The installer usually prints
+instructions — follow them, then **restart your shell** (or `source ~/.bashrc` /
+`source ~/.zshrc`).
+
+Verify:
+```bash
+uv --version
+```
+
+**Windows:**
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+### 2c) Ensure a compatible Python version
+
+The server requires Python ≥3.12 and <3.14. Check what's available:
+
+```bash
+uv python list --only-installed 2>/dev/null | head -5
+```
+
+If no 3.12.x or 3.13.x version appears, install one with uv (no sudo needed):
+
+```bash
+uv python install 3.13
+```
+
+uv manages its own Python installations in `~/.local/share/uv/python/` — this
+does not conflict with any system Python.
+
+### 2d) Verify the full chain
+
+Run a quick smoke test to confirm uv can launch the server's Python:
+
+```bash
+uv run --python 3.13 python -c "import sys; print(f'Python {sys.version}')"
+```
+
+If this prints a version line, you're good. If it errors, troubleshoot before
+continuing.
+
+> **Why Python <3.14?** The server depends on `pydantic-core`, which uses compiled
+> Rust extensions. As of this writing, pre-built wheels are only available for
+> Python ≤3.13. Python 3.14 would require building from source, which often fails.
+
+---
+
+## Step 3 — Collect Snowflake Credentials
 
 Ask the user for all of these at once:
 
@@ -192,7 +293,7 @@ If the user picks **key-pair credential file**, follow up and ask for the file p
 
 ---
 
-## Step 3 — Add the MCP Server to Your Client
+## Step 4 — Add the MCP Server to Your Client
 
 You are already running inside an MCP client — you know which one you are.
 Add a new MCP server with these details:
@@ -210,13 +311,37 @@ Add a new MCP server with these details:
 **Arguments:** `["-y", "snowflake-readonly-mcp@latest"]`
 
 **Environment variables:**
-| Variable                     | Value              | Required?                           |
-| ---------------------------- | ------------------ | ----------------------------------- |
-| `SNOWFLAKE_ACCOUNT`          | User's account ID  | Yes                                 |
-| `SNOWFLAKE_USERNAME`         | User's email       | Yes                                 |
-| `SNOWFLAKE_WAREHOUSE`        | Warehouse name     | Yes                                 |
-| `SNOWFLAKE_ROLE`             | Snowflake role     | Yes                                 |
-| `SNOWFLAKE_CREDENTIAL_FILE`  | Path to cred file  | Only if user chose key-pair auth    |
+| Variable                    | Value                         | Required?                                          |
+| --------------------------- | ----------------------------- | -------------------------------------------------- |
+| `SNOWFLAKE_ACCOUNT`         | User's account ID             | Yes                                                |
+| `SNOWFLAKE_USERNAME`        | User's email                  | Yes                                                |
+| `SNOWFLAKE_WAREHOUSE`       | Warehouse name                | Yes                                                |
+| `SNOWFLAKE_ROLE`            | Snowflake role                | Yes                                                |
+| `SNOWFLAKE_CREDENTIAL_FILE` | Path to cred file             | Only if user chose key-pair auth                   |
+| `PATH`                      | See note below                | **Yes** for GUI clients or nvm users               |
+
+> **⚠️ PATH is required for GUI clients and nvm users.**
+>
+> GUI-based MCP clients do NOT inherit your shell's PATH. The server needs `node`,
+> `uv`, and `python` to be discoverable. Build a PATH that includes every bin
+> directory recorded in Steps 1 and 2:
+>
+> ```
+> <node-bin-dir>:<uv-bin-dir>:/usr/local/bin:/usr/bin:/bin
+> ```
+>
+> **Example (nvm + uv):**
+> ```
+> /Users/you/.nvm/versions/node/v22.15.0/bin:/Users/you/.local/bin:/usr/local/bin:/usr/bin:/bin
+> ```
+>
+> **Example (Homebrew):**
+> ```
+> /opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin
+> ```
+>
+> **Terminal-based clients** generally inherit PATH from your shell, so this is
+> only needed if `which npx`, `which uv`, or `which node` fail inside the client.
 
 ### How to add it
 
@@ -249,6 +374,7 @@ The standard schema used by most clients (Claude Desktop, Cursor, Gemini CLI, et
       "command": "<npx-command>",
       "args": ["-y", "snowflake-readonly-mcp@latest"],
       "env": {
+        "PATH": "<node-bin-dir>:<uv-bin-dir>:/usr/local/bin:/usr/bin:/bin",
         "SNOWFLAKE_ACCOUNT": "<account>",
         "SNOWFLAKE_USERNAME": "<username>",
         "SNOWFLAKE_WAREHOUSE": "<warehouse>",
@@ -259,6 +385,9 @@ The standard schema used by most clients (Claude Desktop, Cursor, Gemini CLI, et
 }
 ```
 
+> **Tip:** For terminal-based clients where PATH is already inherited, you can
+> omit the `PATH` entry. For GUI clients, always include it.
+
 Some clients use a different schema. For example, OpenCode uses `"mcp"` instead
 of `"mcpServers"`, a single `"command"` array, and `"environment"` instead of `"env"`:
 ```jsonc
@@ -268,6 +397,7 @@ of `"mcpServers"`, a single `"command"` array, and `"environment"` instead of `"
       "type": "local",
       "command": ["<npx-command>", "-y", "snowflake-readonly-mcp@latest"],
       "environment": {
+        "PATH": "<node-bin-dir>:<uv-bin-dir>:/usr/local/bin:/usr/bin:/bin",
         "SNOWFLAKE_ACCOUNT": "<account>",
         "SNOWFLAKE_USERNAME": "<username>",
         "SNOWFLAKE_WAREHOUSE": "<warehouse>",
@@ -286,7 +416,7 @@ to add a stdio-based MCP server. The payload is always the same — a command
 
 ---
 
-## Step 4 — Wrap Up
+## Step 5 — Wrap Up
 
 Everything is configured. Tell the user:
 
@@ -301,7 +431,10 @@ Everything is configured. Tell the user:
 > - Typo in the warehouse or role name
 > - Role doesn't have access to the data you're querying
 > - Browser SSO pop-up was blocked
+> - `uv` or Python not found (re-run Step 2 to verify)
 >
 > Check `~/.snowflake_mcp/server.log` for detailed error messages.
+> If the log file doesn't exist, the server never started — re-check
+> that `npx`, `uv`, and Python 3.12+ are all reachable from your PATH.
 >
 > If you found this helpful, please star the repo! https://github.com/ncejda-g2/snowflake_mcp_server"
