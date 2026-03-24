@@ -213,3 +213,90 @@ jobs:
           summary: true
           display-options: fEX
           fail-on-empty: true
+
+  install-test:
+    runs-on: ${{ matrix.os }}
+    needs: lint
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ["3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Resolve and install all dependencies
+        run: uv sync --python ${{ matrix.python-version }}
+
+      - name: Verify core imports
+        run: |
+          uv run --python ${{ matrix.python-version }} python -c "
+          from server.config import Config
+          from server.schema_cache import SchemaCache
+          from server.snowflake_connection import SnowflakeConnection
+          from server.log_utils import setup_logger
+          print('All core imports OK')
+          "
+
+      - name: Test server startup (degraded mode)
+        shell: bash
+        run: |
+          uv run --python ${{ matrix.python-version }} python -c "
+          import subprocess, sys
+          proc = subprocess.Popen(
+              [sys.executable, '-m', 'server'],
+              stdin=subprocess.DEVNULL,
+              stdout=subprocess.PIPE,
+              stderr=subprocess.PIPE,
+          )
+          try:
+              _, stderr = proc.communicate(timeout=10)
+              stderr_text = stderr.decode(errors='replace')
+              print(stderr_text, file=sys.stderr)
+              # Exit code 0 = clean shutdown (unexpected but ok)
+              # Non-zero before timeout = crash
+              if proc.returncode != 0:
+                  print(f'FAIL: Server crashed with exit code {proc.returncode}')
+                  sys.exit(1)
+          except subprocess.TimeoutExpired:
+              proc.kill()
+              proc.wait()
+              print('Server started successfully (killed after 10s timeout)')
+          "
+
+      - name: Build wheel
+        run: uv build
+
+      - name: Test MCPB bundle simulation
+        shell: bash
+        run: |
+          mkdir -p /tmp/mcpb-test
+          cp -r server pyproject.toml uv.lock main.py /tmp/mcpb-test/
+          uv run --python ${{ matrix.python-version }} --directory /tmp/mcpb-test python -c "
+          import subprocess, sys
+          proc = subprocess.Popen(
+              [sys.executable, '-m', 'server'],
+              stdin=subprocess.DEVNULL,
+              stdout=subprocess.PIPE,
+              stderr=subprocess.PIPE,
+              cwd='/tmp/mcpb-test',
+          )
+          try:
+              _, stderr = proc.communicate(timeout=10)
+              stderr_text = stderr.decode(errors='replace')
+              print(stderr_text, file=sys.stderr)
+              if proc.returncode != 0:
+                  print(f'FAIL: MCPB simulation crashed with exit code {proc.returncode}')
+                  sys.exit(1)
+          except subprocess.TimeoutExpired:
+              proc.kill()
+              proc.wait()
+              print('MCPB simulation started successfully (killed after 10s timeout)')
+          "
