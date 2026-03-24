@@ -5,6 +5,18 @@ All notable changes to the Snowflake MCP Server will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.18] - 2026-03-24
+
+### Added
+- **PyPI publishing**: Package now published to PyPI as `snowflake-readonly-mcp` alongside npm
+- **`uvx` support**: Users can now install with `uvx snowflake-readonly-mcp` — no Node.js required
+- `server/__main__.py` entry point with env var validation (enables `python -m server`)
+
+### Changed
+- Renamed PyPI package from `snowflake_mcp_server` to `snowflake-readonly-mcp` (matches npm package name)
+- README: `uvx` is now the recommended install method; `npx` remains as secondary option
+- `main.py` now delegates to `server.__main__:main` (backward compatible)
+
 ## [0.1.17] - 2026-03-10
 
 ### Fixed

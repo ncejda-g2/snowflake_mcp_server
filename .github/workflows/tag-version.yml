@@ -90,3 +90,32 @@ jobs:
       - name: Publish to npm
         if: steps.version-check.outputs.version_changed == 'true'
         run: npm publish --provenance --access public
+
+      - name: Install uv
+        if: steps.version-check.outputs.version_changed == 'true'
+        uses: astral-sh/setup-uv@v4
+
+      - name: Build Python package
+        if: steps.version-check.outputs.version_changed == 'true'
+        run: uv build
+
+      - name: Publish to PyPI
+        if: steps.version-check.outputs.version_changed == 'true'
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+      - name: Build MCPB Desktop Extension
+        if: steps.version-check.outputs.version_changed == 'true'
+        run: |
+          npx -y @anthropic-ai/mcpb validate manifest.json
+          npx -y @anthropic-ai/mcpb pack .
+          MCPB_FILE=$(ls *.mcpb)
+          echo "mcpb_file=$MCPB_FILE" >> $GITHUB_ENV
+          echo "Built MCPB: $MCPB_FILE"
+
+      - name: Upload MCPB to GitHub Release
+        if: steps.version-check.outputs.version_changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="v${{ steps.version-check.outputs.new_version }}"
+          gh release upload "$VERSION" "${{ env.mcpb_file }}" --clobber

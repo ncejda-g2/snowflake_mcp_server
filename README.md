@@ -12,7 +12,7 @@
 
   <p align="center">
     <a href="https://github.com/ncejda-g2/snowflake_mcp_server/releases">
-      <img src="https://img.shields.io/badge/version-v0.1.17-9b59b6" alt="Version" />
+      <img src="https://img.shields.io/badge/version-v0.1.18-9b59b6" alt="Version" />
     </a>
     <a href="./CHANGELOG.md">
       <img src="https://img.shields.io/badge/changelog-Latest%20Changes-blue" alt="Changelog" />
@@ -69,12 +69,17 @@ Set up the Snowflake MCP server for me by following this guide:
 https://raw.githubusercontent.com/ncejda-g2/snowflake_mcp_server/main/docs/guide/agent-setup.md
 ```
 
-Your agent will walk you through everything interactively — including installing Node.js and Homebrew if needed. No manual config editing required.
+Your agent will walk you through everything interactively — including installing prerequisites. No manual config editing required.
 
 <details>
 <summary><b>Manual setup & from-source install</b></summary>
 
-### npx (no install needed)
+### uvx (Recommended — no Node.js required)
+
+Just configure your MCP client using the examples in the [Configuration](#configuration) section below.
+Requires [uv](https://docs.astral.sh/uv/getting-started/installation/) (`curl -LsSf https://astral.sh/uv/install.sh | sh`).
+
+### npx (requires Node.js)
 
 Just configure your MCP client using the examples in the [Configuration](#configuration) section below.
 
@@ -97,7 +102,27 @@ pip install -r requirements.txt
 
 Edit your `~/.claude.json` file:
 
-**Using npx (Recommended):**
+**Using uvx (Recommended):**
+
+```json
+{
+  "mcpServers": {
+    "snowflake-readonly": {
+      "command": "uvx",
+      "args": ["snowflake-readonly-mcp"],
+      "env": {
+        "SNOWFLAKE_ACCOUNT": "your-account",
+        "SNOWFLAKE_USERNAME": "your-email@company.com",
+        "SNOWFLAKE_WAREHOUSE": "YOUR_WAREHOUSE",
+        "SNOWFLAKE_ROLE": "YOUR_ROLE",
+        "SNOWFLAKE_CREDENTIAL_FILE": "/path/to/credentials.json"  // optional — omit to use browser SSO
+      }
+    }
+  }
+}
+```
+
+**Using npx:**
 
 ```json
 {
@@ -150,58 +175,36 @@ Replace:
 <details>
 <summary><b>Claude Desktop</b></summary>
 
+**One-click install:** Download the [latest `.mcpb` extension](https://github.com/ncejda-g2/snowflake_mcp_server/releases/latest/download/snowflake_mcp_server.mcpb) and double-click it. Claude Desktop will prompt you for your Snowflake credentials.
+
+<details>
+<summary>Manual configuration (advanced)</summary>
+
 Edit your configuration file:
 - macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
 - Windows: `%APPDATA%\Claude\claude_desktop_config.json`
 - Linux: `~/.config/claude/claude_desktop_config.json`
 
-**Using npx (Recommended):**
-
 ```json
 {
   "mcpServers": {
     "snowflake-readonly": {
-      "command": "npx",
-      "args": ["-y", "snowflake-readonly-mcp"],
+      "command": "uvx",
+      "args": ["snowflake-readonly-mcp"],
       "env": {
         "SNOWFLAKE_ACCOUNT": "your-account",
         "SNOWFLAKE_USERNAME": "your-email@company.com",
         "SNOWFLAKE_WAREHOUSE": "YOUR_WAREHOUSE",
-        "SNOWFLAKE_ROLE": "YOUR_ROLE",
-        "SNOWFLAKE_CREDENTIAL_FILE": "/path/to/credentials.json"  // optional — omit to use browser SSO
+        "SNOWFLAKE_ROLE": "YOUR_ROLE"
       }
     }
   }
 }
 ```
 
-**Using local clone:**
+Requires [uv](https://docs.astral.sh/uv/getting-started/installation/).
 
-```json
-{
-  "mcpServers": {
-    "snowflake-readonly": {
-      "command": "/path/to/snowflake_mcp_server/snowflake_mcp_env/bin/python",
-      "args": ["/path/to/snowflake_mcp_server/main.py"],
-      "env": {
-        "SNOWFLAKE_ACCOUNT": "your-account",
-        "SNOWFLAKE_USERNAME": "your-email@company.com",
-        "SNOWFLAKE_WAREHOUSE": "YOUR_WAREHOUSE",
-        "SNOWFLAKE_ROLE": "YOUR_ROLE",
-        "SNOWFLAKE_CREDENTIAL_FILE": "/path/to/credentials.json"  // optional — omit to use browser SSO
-      }
-    }
-  }
-}
-```
-
-Replace:
-- `/path/to/snowflake_mcp_server`: Absolute path to your cloned repository (local clone only)
-- `your-account`: Your Snowflake account identifier (e.g., `xy12345.us-east-1`)
-- `your-email@company.com`: Your Snowflake username
-- `YOUR_WAREHOUSE`: Your Snowflake warehouse name
-- `YOUR_ROLE`: Your Snowflake role (e.g., `ANALYST`, `PUBLIC`)
-- `SNOWFLAKE_CREDENTIAL_FILE` *(optional)*: Path to a JSON credential file for headless key-pair auth (omit to use browser SSO)
+</details>
 
 </details>
 
@@ -210,7 +213,27 @@ Replace:
 
 Edit your Cursor settings:
 
-**Using npx (Recommended):**
+**Using uvx (Recommended):**
+
+```json
+{
+  "mcpServers": {
+    "snowflake-readonly": {
+      "command": "uvx",
+      "args": ["snowflake-readonly-mcp"],
+      "env": {
+        "SNOWFLAKE_ACCOUNT": "your-account",
+        "SNOWFLAKE_USERNAME": "your-email@company.com",
+        "SNOWFLAKE_WAREHOUSE": "YOUR_WAREHOUSE",
+        "SNOWFLAKE_ROLE": "YOUR_ROLE",
+        "SNOWFLAKE_CREDENTIAL_FILE": "/path/to/credentials.json"  // optional — omit to use browser SSO
+      }
+    }
+  }
+}
+```
+
+**Using npx:**
 
 ```json
 {
@@ -267,7 +290,28 @@ Edit your `~/.config/opencode/opencode.json` file (global) or `opencode.json` in
 
 > **Note:** OpenCode uses `"mcp"` (not `"mcpServers"`), `"command"` as a single array (not separate `command`/`args`), and `"environment"` (not `"env"`).
 
-**Using npx (Recommended):**
+**Using uvx (Recommended):**
+
+```jsonc
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "snowflake-readonly": {
+      "type": "local",
+      "command": ["uvx", "snowflake-readonly-mcp"],
+      "environment": {
+        "SNOWFLAKE_ACCOUNT": "your-account",
+        "SNOWFLAKE_USERNAME": "your-email@company.com",
+        "SNOWFLAKE_WAREHOUSE": "YOUR_WAREHOUSE",
+        "SNOWFLAKE_ROLE": "YOUR_ROLE",
+        "SNOWFLAKE_CREDENTIAL_FILE": "/path/to/credentials.json"  // optional — omit to use browser SSO
+      }
+    }
+  }
+}
+```
+
+**Using npx:**
 
 ```jsonc
 {
@@ -287,6 +331,7 @@ Edit your `~/.config/opencode/opencode.json` file (global) or `opencode.json` in
   }
 }
 ```
+
 
 **Using local clone:**
 
@@ -322,9 +367,31 @@ Replace:
 <details>
 <summary><b>Gemini CLI</b></summary>
 
+
+
 Edit your `~/.gemini/settings.json` file:
 
-**Using npx (Recommended):**
+**Using uvx (Recommended):**
+
+```json
+{
+  "mcpServers": {
+    "snowflake-readonly": {
+      "command": "uvx",
+      "args": ["snowflake-readonly-mcp"],
+      "env": {
+        "SNOWFLAKE_ACCOUNT": "your-account",
+        "SNOWFLAKE_USERNAME": "your-email@company.com",
+        "SNOWFLAKE_WAREHOUSE": "YOUR_WAREHOUSE",
+        "SNOWFLAKE_ROLE": "YOUR_ROLE",
+        "SNOWFLAKE_CREDENTIAL_FILE": "/path/to/credentials.json"  // optional — omit to use browser SSO
+      }
+    }
+  }
+}
+```
+
+**Using npx:**
 
 ```json
 {

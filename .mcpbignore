@@ -1,0 +1,58 @@
+# Version control
+.git/
+.gitignore
+.github/
+
+# Python artifacts
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+dist/
+build/
+htmlcov/
+.coverage
+coverage.xml
+test-results.xml
+
+# Node.js (legacy wrapper — not needed for MCPB)
+node_modules/
+node-compile-cache/
+bin/
+package.json
+package-lock.json
+
+# Tests and docs (not needed at runtime)
+tests/
+docs/
+AGENTS.md
+CHANGELOG.md
+README.md
+
+# Build artifacts
+*.mcpb
+snowflake_mcp_env/
+
+# Assets (not needed at runtime)
+assets/
+
+# IDE / editor
+.claude/
+.pre-commit-config.yaml
+.sisyphus/
+
+# Cloned repos (from research — not part of the server)
+mcpb-repo/
+things-mcpb/
+
+# Requirements files (deps are in pyproject.toml)
+requirements.txt
+requirements-dev.txt
+
+# MCPB spec: must NOT include bundled deps for type=uv
+server/lib/
+server/venv/
