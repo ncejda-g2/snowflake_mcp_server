@@ -5,6 +5,11 @@ All notable changes to the Snowflake MCP Server will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.19] - 2026-03-24
+
+### Fixed
+- Cap Python at `<3.14` — `cffi 1.17.1` has no pre-built wheels for cp314, causing install failures on machines without a C compiler (#38)
+
 ## [0.1.18] - 2026-03-24
 
 ### Added

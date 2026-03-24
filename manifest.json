@@ -3,7 +3,7 @@
   "manifest_version": "0.4",
   "name": "snowflake-readonly-mcp",
   "display_name": "Snowflake Read-Only MCP",
-  "version": "0.1.18",
+  "version": "0.1.19",
   "description": "Secure, read-only access to your Snowflake warehouse. Browse schemas, execute queries, and export results \u2014 all without write permissions.",
   "long_description": "This MCP server provides read-only access with schema browsing, SQL execution, query validation, and CSV export. Supports browser SSO and key-pair authentication. Uses an intelligent schema cache for fast metadata lookups.",
   "author": {
@@ -112,7 +112,7 @@
       "linux"
     ],
     "runtimes": {
-      "python": ">=3.12"
+      "python": ">=3.12,<3.14"
     }
   },
   "keywords": [
