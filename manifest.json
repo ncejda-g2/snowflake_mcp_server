@@ -4,7 +4,7 @@
   "name": "snowflake-readonly-mcp",
   "display_name": "Snowflake Read-Only MCP",
   "version": "0.1.18",
-  "description": "Secure, read-only access to your Snowflake warehouse. Browse schemas, execute queries, and export results — all without write permissions.",
+  "description": "Secure, read-only access to your Snowflake warehouse. Browse schemas, execute queries, and export results \u2014 all without write permissions.",
   "long_description": "This MCP server provides read-only access with schema browsing, SQL execution, query validation, and CSV export. Supports browser SSO and key-pair authentication. Uses an intelligent schema cache for fast metadata lookups.",
   "author": {
     "name": "Nicholas Cejda",
@@ -21,7 +21,12 @@
     "entry_point": "server/__main__.py",
     "mcp_config": {
       "command": "uv",
-      "args": ["run", "--directory", "${__dirname}", "snowflake-readonly-mcp"],
+      "args": [
+        "run",
+        "--directory",
+        "${__dirname}",
+        "snowflake-readonly-mcp"
+      ],
       "env": {
         "SNOWFLAKE_ACCOUNT": "${user_config.snowflake_account}",
         "SNOWFLAKE_USERNAME": "${user_config.snowflake_username}",
@@ -34,7 +39,7 @@
     "snowflake_account": {
       "type": "string",
       "title": "Snowflake Account",
-      "description": "Your Snowflake account identifier (e.g. xy12345.us-east-1 or ORGNAME-ACCOUNTNAME). Find it in Snowflake: bottom-left corner → account name → View account details.",
+      "description": "Your Snowflake account identifier (e.g. xy12345.us-east-1 or ORGNAME-ACCOUNTNAME). Find it in Snowflake: bottom-left corner \u2192 account name \u2192 View account details.",
       "required": true
     },
     "snowflake_username": {
@@ -46,7 +51,7 @@
     "snowflake_warehouse": {
       "type": "string",
       "title": "Snowflake Warehouse",
-      "description": "Warehouse to use for queries (e.g. COMPUTE_WH). Any warehouse you have access to will work — the server only runs lightweight read-only queries.",
+      "description": "Warehouse to use for queries (e.g. COMPUTE_WH). Any warehouse you have access to will work \u2014 the server only runs lightweight read-only queries.",
       "required": true
     },
     "snowflake_role": {
@@ -63,22 +68,61 @@
     }
   },
   "tools": [
-    {"name": "refresh_catalog", "description": "Refresh the schema catalog by scanning all accessible databases"},
-    {"name": "show_tables", "description": "Browse databases, schemas, and tables using pattern-based filtering"},
-    {"name": "find_tables", "description": "Search for tables by keyword across all databases"},
-    {"name": "describe_table", "description": "Get detailed column information for a specific table"},
-    {"name": "execute_query", "description": "Execute a read-only SQL query on Snowflake"},
-    {"name": "validate_query_without_execution", "description": "Generate and validate a SQL query without executing it"},
-    {"name": "get_query_history", "description": "Get the history of executed queries in this session"},
-    {"name": "save_last_query_to_csv", "description": "Save the last query results to a CSV file"},
-    {"name": "execute_big_query_to_disk", "description": "Execute a large query and save results directly to CSV"}
+    {
+      "name": "refresh_catalog",
+      "description": "Refresh the schema catalog by scanning all accessible databases"
+    },
+    {
+      "name": "show_tables",
+      "description": "Browse databases, schemas, and tables using pattern-based filtering"
+    },
+    {
+      "name": "find_tables",
+      "description": "Search for tables by keyword across all databases"
+    },
+    {
+      "name": "describe_table",
+      "description": "Get detailed column information for a specific table"
+    },
+    {
+      "name": "execute_query",
+      "description": "Execute a read-only SQL query on Snowflake"
+    },
+    {
+      "name": "validate_query_without_execution",
+      "description": "Generate and validate a SQL query without executing it"
+    },
+    {
+      "name": "get_query_history",
+      "description": "Get the history of executed queries in this session"
+    },
+    {
+      "name": "save_last_query_to_csv",
+      "description": "Save the last query results to a CSV file"
+    },
+    {
+      "name": "execute_big_query_to_disk",
+      "description": "Execute a large query and save results directly to CSV"
+    }
   ],
   "compatibility": {
-    "platforms": ["darwin", "win32", "linux"],
+    "platforms": [
+      "darwin",
+      "win32",
+      "linux"
+    ],
     "runtimes": {
       "python": ">=3.12"
     }
   },
-  "keywords": ["snowflake", "database", "sql", "read-only", "data", "warehouse", "analytics"],
+  "keywords": [
+    "snowflake",
+    "database",
+    "sql",
+    "read-only",
+    "data",
+    "warehouse",
+    "analytics"
+  ],
   "license": "MIT"
 }
