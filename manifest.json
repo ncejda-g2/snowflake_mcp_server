@@ -1,0 +1,84 @@
+{
+  "$schema": "https://raw.githubusercontent.com/modelcontextprotocol/mcpb/main/schemas/mcpb-manifest-latest.schema.json",
+  "manifest_version": "0.4",
+  "name": "snowflake-readonly-mcp",
+  "display_name": "Snowflake Read-Only MCP",
+  "version": "0.1.18",
+  "description": "Secure, read-only access to your Snowflake warehouse. Browse schemas, execute queries, and export results — all without write permissions.",
+  "long_description": "This MCP server provides read-only access with schema browsing, SQL execution, query validation, and CSV export. Supports browser SSO and key-pair authentication. Uses an intelligent schema cache for fast metadata lookups.",
+  "author": {
+    "name": "Nicholas Cejda",
+    "email": "ncejda@g2.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ncejda-g2/snowflake_mcp_server.git"
+  },
+  "homepage": "https://github.com/ncejda-g2/snowflake_mcp_server",
+  "support": "https://github.com/ncejda-g2/snowflake_mcp_server/issues",
+  "server": {
+    "type": "uv",
+    "entry_point": "server/__main__.py",
+    "mcp_config": {
+      "command": "uv",
+      "args": ["run", "--directory", "${__dirname}", "snowflake-readonly-mcp"],
+      "env": {
+        "SNOWFLAKE_ACCOUNT": "${user_config.snowflake_account}",
+        "SNOWFLAKE_USERNAME": "${user_config.snowflake_username}",
+        "SNOWFLAKE_WAREHOUSE": "${user_config.snowflake_warehouse}",
+        "SNOWFLAKE_ROLE": "${user_config.snowflake_role}"
+      }
+    }
+  },
+  "user_config": {
+    "snowflake_account": {
+      "type": "string",
+      "title": "Snowflake Account",
+      "description": "Your Snowflake account identifier (e.g. xy12345.us-east-1 or ORGNAME-ACCOUNTNAME). Find it in Snowflake: bottom-left corner → account name → View account details.",
+      "required": true
+    },
+    "snowflake_username": {
+      "type": "string",
+      "title": "Snowflake Username",
+      "description": "Your Snowflake login name or email. Find it on the same View Account Details page under 'Login Name'.",
+      "required": true
+    },
+    "snowflake_warehouse": {
+      "type": "string",
+      "title": "Snowflake Warehouse",
+      "description": "Warehouse to use for queries (e.g. COMPUTE_WH). Any warehouse you have access to will work — the server only runs lightweight read-only queries.",
+      "required": true
+    },
+    "snowflake_role": {
+      "type": "string",
+      "title": "Snowflake Role",
+      "description": "Snowflake role with read access to your data (e.g. ANALYST). Run SELECT CURRENT_ROLE(); in Snowflake to see your current role.",
+      "required": true
+    },
+    "snowflake_credential_file": {
+      "type": "file",
+      "title": "Credential File (Optional)",
+      "description": "Path to key-pair credential file for headless/server authentication. Leave empty to use browser SSO (recommended for most users).",
+      "required": false
+    }
+  },
+  "tools": [
+    {"name": "refresh_catalog", "description": "Refresh the schema catalog by scanning all accessible databases"},
+    {"name": "show_tables", "description": "Browse databases, schemas, and tables using pattern-based filtering"},
+    {"name": "find_tables", "description": "Search for tables by keyword across all databases"},
+    {"name": "describe_table", "description": "Get detailed column information for a specific table"},
+    {"name": "execute_query", "description": "Execute a read-only SQL query on Snowflake"},
+    {"name": "validate_query_without_execution", "description": "Generate and validate a SQL query without executing it"},
+    {"name": "get_query_history", "description": "Get the history of executed queries in this session"},
+    {"name": "save_last_query_to_csv", "description": "Save the last query results to a CSV file"},
+    {"name": "execute_big_query_to_disk", "description": "Execute a large query and save results directly to CSV"}
+  ],
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "runtimes": {
+      "python": ">=3.12"
+    }
+  },
+  "keywords": ["snowflake", "database", "sql", "read-only", "data", "warehouse", "analytics"],
+  "license": "MIT"
+}

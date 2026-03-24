@@ -71,6 +71,17 @@ class Config(BaseModel):
         return v
 
     @classmethod
+    def _resolve_optional_env(cls, key: str) -> str | None:
+        """Read an optional env var, returning None for empty or unresolved template values."""
+        value = os.getenv(key)
+        if not value:
+            return None
+        # Guard against MCPB variable substitution failures (e.g. "${user_config.xxx}")
+        if value.startswith("${") and value.endswith("}"):
+            return None
+        return value
+
+    @classmethod
     def from_env(cls) -> "Config":
         """Create configuration from environment variables."""
         # Check for required environment variables
@@ -102,7 +113,7 @@ class Config(BaseModel):
             username=username,
             warehouse=warehouse,
             role=role,
-            credential_file=os.getenv("SNOWFLAKE_CREDENTIAL_FILE"),
+            credential_file=cls._resolve_optional_env("SNOWFLAKE_CREDENTIAL_FILE"),
             host=os.getenv("MCP_HOST", "0.0.0.0"),
             port=int(os.getenv("MCP_PORT", "8000")),
             transport=os.getenv("MCP_TRANSPORT", "stdio"),
