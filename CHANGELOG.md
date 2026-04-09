@@ -8,7 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.2.0] - 2026-04-09
 
 ### Changed
-- **Two-tier cache**: Catalog refresh now queries only `INFORMATION_SCHEMA.TABLES` + column counts (no full column detail). Refresh drops from ~12min to ~3.5min, cache from 67MB to 8.6MB.
+- **Two-tier cache**: Catalog refresh now queries only `INFORMATION_SCHEMA.TABLES` + column counts (no full column detail). Cache drops from 67MB to 8.6MB.
+- **Parallel async scanning**: Uses Snowflake's `execute_async` API to scan up to 50 schemas concurrently on a single connection. Refresh drops from ~12min to ~60sec.
 - **On-demand column loading**: `describe_table` fetches column details live via `DESCRIBE TABLE` on first call (~200ms), then caches for subsequent calls.
 - **Schema-level incremental refresh**: Each schema is scanned independently with `LAST_ALTERED` smart-skip for unchanged schemas. Partial failures no longer wipe the entire cache.
 - **Removed client-side timeouts**: Removed `network_timeout` and `STATEMENT_TIMEOUT_IN_SECONDS` — Snowflake handles timeouts server-side.
