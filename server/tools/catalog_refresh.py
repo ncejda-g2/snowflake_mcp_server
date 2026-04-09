@@ -263,6 +263,7 @@ def _scan_schemas_async(
 
                 if job.tables_data is None:
                     # Phase 1: waiting for TABLES query
+                    assert job.tables_cursor is not None
                     status = conn.get_query_status_throw_if_error(job.tables_qid)
                     if status == QueryStatus.SUCCESS:
                         job.tables_cursor.get_results_from_sfqid(job.tables_qid)
@@ -279,6 +280,7 @@ def _scan_schemas_async(
 
                 elif not job.done:
                     # Phase 2: waiting for COLUMNS count query
+                    assert job.counts_cursor is not None
                     status = conn.get_query_status_throw_if_error(job.counts_qid)
                     if status == QueryStatus.SUCCESS:
                         job.counts_cursor.get_results_from_sfqid(job.counts_qid)
