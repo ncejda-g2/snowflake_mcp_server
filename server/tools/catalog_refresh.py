@@ -8,6 +8,7 @@ from datetime import datetime
 
 import snowflake.connector
 from snowflake.connector.constants import QueryStatus
+from snowflake.connector.cursor import DictCursor
 
 from server.schema_cache import SchemaCache
 from server.snowflake_connection import SnowflakeConnection
@@ -31,11 +32,11 @@ class _SchemaJob:
     schema: str
     # Phase 1: TABLES query
     tables_qid: str | None = None
-    tables_cursor: object | None = None
+    tables_cursor: DictCursor | None = None
     tables_data: list[dict] | None = None
     # Phase 2: COLUMNS count query (submitted after TABLES completes)
     counts_qid: str | None = None
-    counts_cursor: object | None = None
+    counts_cursor: DictCursor | None = None
     column_counts: dict[str, int] = field(default_factory=dict)
     # Result
     done: bool = False
@@ -336,7 +337,9 @@ def _scan_schemas_async(
     return schemas_scanned, total_tables, errors
 
 
-def _submit_tables_query(conn: object, job: _SchemaJob) -> None:
+def _submit_tables_query(
+    conn: snowflake.connector.SnowflakeConnection, job: _SchemaJob
+) -> None:
     """Submit an async TABLES metadata query for a schema."""
     cursor = conn.cursor(snowflake.connector.DictCursor)
     cursor.execute_async(
@@ -352,7 +355,9 @@ def _submit_tables_query(conn: object, job: _SchemaJob) -> None:
     job.tables_cursor = cursor
 
 
-def _submit_counts_query(conn: object, job: _SchemaJob) -> None:
+def _submit_counts_query(
+    conn: snowflake.connector.SnowflakeConnection, job: _SchemaJob
+) -> None:
     """Submit an async COLUMNS count query for a schema."""
     cursor = conn.cursor(snowflake.connector.DictCursor)
     cursor.execute_async(
