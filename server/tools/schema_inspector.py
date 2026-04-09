@@ -90,9 +90,9 @@ async def show_tables(
                         # Include full details when not filtering by database
                         table_info = {
                             "name": table.table_name,
-                            "columns": len(table.columns),
+                            "columns": table.column_count,
                         }
-                        total_columns += len(table.columns)
+                        total_columns += table.column_count
 
                         # Only include comment if it exists
                         if table.comment:
@@ -219,7 +219,7 @@ async def find_tables(
                     "table": table.table_name,
                     "type": table.table_type,
                     "full_name": table.full_name,
-                    "columns": len(table.columns),
+                    "columns": table.column_count,
                     "comment": table.comment,
                 }
             )

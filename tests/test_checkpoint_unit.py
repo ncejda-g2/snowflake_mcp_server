@@ -25,7 +25,7 @@ def test_checkpoint_functionality():
     print(f"\nTest cache directory: {cache.cache_dir}")
     print(f"Checkpoint directory: {cache.checkpoint_dir}")
 
-    # Test 1: Save checkpoint
+    # Test 1: Save checkpoint (schema-level)
     print("\n--- Test 1: Save Checkpoint ---")
 
     test_results = [
@@ -34,41 +34,28 @@ def test_checkpoint_functionality():
             "TABLE_SCHEMA": "PUBLIC",
             "TABLE_NAME": "USERS",
             "TABLE_TYPE": "TABLE",
-            "COLUMN_NAME": "ID",
-            "DATA_TYPE": "NUMBER",
-            "IS_NULLABLE": "NO",
-            "ORDINAL_POSITION": 1,
             "ROW_COUNT": 1000,
             "BYTES": 4096,
-        },
-        {
-            "TABLE_CATALOG": "TEST_DB",
-            "TABLE_SCHEMA": "PUBLIC",
-            "TABLE_NAME": "USERS",
-            "TABLE_TYPE": "TABLE",
-            "COLUMN_NAME": "NAME",
-            "DATA_TYPE": "VARCHAR",
-            "IS_NULLABLE": "YES",
-            "ORDINAL_POSITION": 2,
-            "ROW_COUNT": 1000,
-            "BYTES": 4096,
+            "COMMENT": "Users table",
         },
     ]
 
-    cache.save_checkpoint("TEST_DB", test_results)
+    cache.save_checkpoint("TEST_DB", "PUBLIC", test_results)
 
-    checkpoint_file = cache.checkpoint_dir / "checkpoint_TEST_DB.json"
+    checkpoint_file = cache.checkpoint_dir / "checkpoint_TEST_DB__PUBLIC.json"
     assert checkpoint_file.exists(), "Checkpoint file should exist"
     print(f"✓ Checkpoint saved: {checkpoint_file}")
 
     # Test 2: Load checkpoints
     print("\n--- Test 2: Load Checkpoints ---")
 
-    loaded_results, processed_databases = cache.load_checkpoints()
+    loaded_results, processed_schemas = cache.load_checkpoints()
 
-    assert len(loaded_results) == 2, f"Should load 2 results, got {len(loaded_results)}"
-    assert "TEST_DB" in processed_databases, "TEST_DB should be in processed databases"
-    print(f"✓ Loaded {len(loaded_results)} results from {processed_databases}")
+    assert len(loaded_results) == 1, f"Should load 1 result, got {len(loaded_results)}"
+    assert "TEST_DB.PUBLIC" in processed_schemas, (
+        "TEST_DB.PUBLIC should be in processed schemas"
+    )
+    print(f"✓ Loaded {len(loaded_results)} results from {processed_schemas}")
 
     # Test 3: Multiple checkpoints
     print("\n--- Test 3: Multiple Checkpoints ---")
@@ -76,34 +63,32 @@ def test_checkpoint_functionality():
     test_results_2 = [
         {
             "TABLE_CATALOG": "ANALYTICS_DB",
-            "TABLE_SCHEMA": "PUBLIC",
+            "TABLE_SCHEMA": "STAGING",
             "TABLE_NAME": "EVENTS",
             "TABLE_TYPE": "TABLE",
-            "COLUMN_NAME": "EVENT_ID",
-            "DATA_TYPE": "VARCHAR",
-            "IS_NULLABLE": "NO",
-            "ORDINAL_POSITION": 1,
+            "ROW_COUNT": 500,
+            "COMMENT": "Events table",
         }
     ]
 
-    cache.save_checkpoint("ANALYTICS_DB", test_results_2)
+    cache.save_checkpoint("ANALYTICS_DB", "STAGING", test_results_2)
 
-    loaded_results, processed_databases = cache.load_checkpoints()
+    loaded_results, processed_schemas = cache.load_checkpoints()
 
-    assert len(loaded_results) == 3, (
-        f"Should load 3 total results, got {len(loaded_results)}"
+    assert len(loaded_results) == 2, (
+        f"Should load 2 total results, got {len(loaded_results)}"
     )
-    assert len(processed_databases) == 2, (
-        f"Should have 2 databases, got {len(processed_databases)}"
+    assert len(processed_schemas) == 2, (
+        f"Should have 2 schemas, got {len(processed_schemas)}"
     )
     print(
-        f"✓ Loaded {len(loaded_results)} results from {len(processed_databases)} databases"
+        f"✓ Loaded {len(loaded_results)} results from {len(processed_schemas)} schemas"
     )
 
     # Test 4: Error log
     print("\n--- Test 4: Error Log ---")
 
-    test_errors = {"FAILED_DB": "Connection timeout", "RESTRICTED_DB": "Access denied"}
+    test_errors = {"DB1.SCH1": "Connection timeout", "DB2.PUBLIC": "Access denied"}
 
     cache.save_error_log(test_errors)
     assert cache.error_log_file.exists(), "Error log file should exist"
@@ -111,23 +96,36 @@ def test_checkpoint_functionality():
 
     loaded_errors = cache.load_error_log()
     assert len(loaded_errors) == 2, f"Should load 2 errors, got {len(loaded_errors)}"
-    assert loaded_errors["FAILED_DB"] == "Connection timeout", (
+    assert loaded_errors["DB1.SCH1"] == "Connection timeout", (
         "Error message should match"
     )
     print(f"✓ Loaded {len(loaded_errors)} errors")
 
-    # Test 5: Update from information schema (with checkpoint data)
-    print("\n--- Test 5: Process Checkpoint Data ---")
+    # Test 5: Merge schema results (with checkpoint data)
+    print("\n--- Test 5: Process Checkpoint Data via merge ---")
 
-    # This simulates what happens after loading checkpoints
     loaded_results, _ = cache.load_checkpoints()
-    table_count = cache.update_from_information_schema(loaded_results)
 
-    assert table_count == 2, f"Should have 2 tables, got {table_count}"
+    # Group by schema and merge
+    schema_groups: dict[str, list[dict]] = {}
+    for row in loaded_results:
+        db = row.get("TABLE_CATALOG", "")
+        sch = row.get("TABLE_SCHEMA", "")
+        key = f"{db}.{sch}"
+        schema_groups.setdefault(key, []).append(row)
+
+    total_tables = 0
+    for schema_key, rows in schema_groups.items():
+        db, sch = schema_key.split(".", 1)
+        total_tables += cache.merge_schema_results(db, sch, rows)
+
+    assert total_tables == 2, f"Should have 2 tables, got {total_tables}"
+    assert cache.get_table("TEST_DB", "PUBLIC", "USERS") is not None
+    assert cache.get_table("ANALYTICS_DB", "STAGING", "EVENTS") is not None
     assert len(cache.databases) == 2, (
         f"Should have 2 databases, got {len(cache.databases)}"
     )
-    print(f"✓ Processed {table_count} tables from {len(cache.databases)} databases")
+    print(f"✓ Processed {total_tables} tables from {len(cache.databases)} databases")
 
     # Test 6: Clear checkpoints
     print("\n--- Test 6: Clear Checkpoints ---")

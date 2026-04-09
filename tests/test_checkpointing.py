@@ -49,11 +49,12 @@ async def test_checkpointing():
 
     print(f"Status: {result['status']}")
     print(f"Tables found: {result.get('tables_found', 0)}")
-    print(f"Databases scanned: {result.get('databases_scanned', 0)}")
+    print(f"Schemas scanned: {result.get('schemas_scanned', 0)}")
+    print(f"Schemas skipped: {result.get('schemas_skipped', 0)}")
     print(f"Databases failed: {result.get('databases_failed', 0)}")
 
     if result.get("errors"):
-        print(f"Errors: {len(result['errors'])} databases failed")
+        print(f"Errors: {len(result['errors'])} schemas failed")
         for error in result["errors"][:3]:  # Show first 3 errors
             print(f"  - {error[:100]}...")
 
@@ -75,6 +76,7 @@ async def test_checkpointing():
     # Manually create some checkpoint files to simulate interruption
     test_checkpoint_data = {
         "database": "TEST_DB",
+        "schema": "PUBLIC",
         "timestamp": datetime.now().isoformat(),
         "results": [
             {
@@ -95,18 +97,18 @@ async def test_checkpointing():
         ],
     }
 
-    checkpoint_file = checkpoint_dir / "checkpoint_TEST_DB.json"
+    checkpoint_file = checkpoint_dir / "checkpoint_TEST_DB__PUBLIC.json"
     with open(checkpoint_file, "w") as f:
         json.dump(test_checkpoint_data, f)
 
     print(f"Created test checkpoint: {checkpoint_file}")
 
     # Test loading checkpoints
-    loaded_results, loaded_databases = cache.load_checkpoints()
+    loaded_results, loaded_schemas = cache.load_checkpoints()
     print(
-        f"Loaded {len(loaded_results)} results from {len(loaded_databases)} databases"
+        f"Loaded {len(loaded_results)} results from {len(loaded_schemas)} schemas"
     )
-    print(f"Processed databases: {loaded_databases}")
+    print(f"Processed schemas: {loaded_schemas}")
 
     # Test 3: Resume from checkpoint
     print("\n--- Test 3: Resume from Checkpoint ---")
@@ -115,7 +117,7 @@ async def test_checkpointing():
 
     print(f"Status: {result['status']}")
     print(f"Tables found: {result.get('tables_found', 0)}")
-    print(f"Databases scanned: {result.get('databases_scanned', 0)}")
+    print(f"Schemas scanned: {result.get('schemas_scanned', 0)}")
 
     # Test 4: Error log functionality
     print("\n--- Test 4: Error Log Functionality ---")

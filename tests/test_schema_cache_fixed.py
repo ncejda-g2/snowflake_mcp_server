@@ -188,9 +188,10 @@ class TestSchemaCache:
         """Test getting cache statistics."""
         # Add some tables
         table1 = TableInfo(
-            "DB1", "SCH1", "TAB1", "TABLE", [ColumnInfo("col1", "VARCHAR", True, 1)]
+            "DB1", "SCH1", "TAB1", "TABLE",
+            [ColumnInfo("col1", "VARCHAR", True, 1)], column_count=1,
         )
-        table2 = TableInfo("DB1", "SCH2", "TAB2", "VIEW", [])
+        table2 = TableInfo("DB1", "SCH2", "TAB2", "VIEW", [], column_count=3)
 
         for table in [table1, table2]:
             cache.add_table(table)
@@ -207,17 +208,17 @@ class TestSchemaCache:
         """Test checkpoint save/load functionality."""
         # Save checkpoint
         checkpoint_data = [{"TABLE_NAME": "TEST_TABLE", "DATABASE_NAME": "TEST_DB"}]
-        cache.save_checkpoint("TEST_DB", checkpoint_data)
+        cache.save_checkpoint("TEST_DB", "PUBLIC", checkpoint_data)
 
         # Load checkpoints
         results, processed = cache.load_checkpoints()
         assert len(results) > 0
-        assert "TEST_DB" in processed
+        assert "TEST_DB.PUBLIC" in processed
 
     def test_clear_checkpoints(self, cache):
         """Test clearing checkpoints."""
         # Create checkpoint
-        cache.save_checkpoint("DB1", [{"data": "test"}])
+        cache.save_checkpoint("DB1", "PUBLIC", [{"data": "test"}])
 
         # Clear
         cache.clear_checkpoints()
@@ -225,6 +226,142 @@ class TestSchemaCache:
         # Verify cleared
         results, processed = cache.load_checkpoints()
         assert len(results) == 0
+
+    def test_merge_schema_results(self, cache):
+        """Test merging table-level results into cache."""
+        # Add existing data for two schemas
+        table1 = TableInfo("DB1", "SCH1", "OLD_TAB", "TABLE", [])
+        table2 = TableInfo("DB1", "SCH2", "KEEP_ME", "TABLE", [])
+        cache.add_table(table1)
+        cache.add_table(table2)
+
+        # Merge new table-level results for SCH1 only
+        table_results = [
+            {
+                "TABLE_CATALOG": "DB1",
+                "TABLE_SCHEMA": "SCH1",
+                "TABLE_NAME": "NEW_TAB",
+                "TABLE_TYPE": "TABLE",
+                "ROW_COUNT": 100,
+                "BYTES": 5000,
+                "COMMENT": "A new table",
+            },
+        ]
+        column_counts = {"NEW_TAB": 5}
+
+        count = cache.merge_schema_results(
+            "DB1", "SCH1", table_results,
+            column_counts=column_counts, max_last_altered="2026-01-01",
+        )
+
+        assert count == 1
+        # Old table in SCH1 should be gone
+        assert cache.get_table("DB1", "SCH1", "OLD_TAB") is None
+        # New table in SCH1 should exist with column_count but no columns
+        new_tab = cache.get_table("DB1", "SCH1", "NEW_TAB")
+        assert new_tab is not None
+        assert new_tab.column_count == 5
+        assert new_tab.columns == []
+        # Table in SCH2 should be untouched
+        assert cache.get_table("DB1", "SCH2", "KEEP_ME") is not None
+        # LAST_ALTERED should be stored
+        assert cache.get_schema_last_altered("DB1", "SCH1") == "2026-01-01"
+
+    def test_merge_preserves_loaded_columns(self, cache):
+        """Test that merge preserves previously-loaded column details."""
+        col = ColumnInfo("ID", "NUMBER", False, 1)
+        table = TableInfo("DB1", "SCH1", "TAB1", "TABLE", [col], column_count=1)
+        cache.add_table(table)
+
+        # Re-merge the schema with table-level data
+        table_results = [
+            {
+                "TABLE_CATALOG": "DB1",
+                "TABLE_SCHEMA": "SCH1",
+                "TABLE_NAME": "TAB1",
+                "TABLE_TYPE": "TABLE",
+                "ROW_COUNT": 200,
+            },
+        ]
+
+        cache.merge_schema_results("DB1", "SCH1", table_results)
+
+        # Columns should be preserved
+        result = cache.get_table("DB1", "SCH1", "TAB1")
+        assert len(result.columns) == 1
+        assert result.columns[0].name == "ID"
+
+    def test_remove_schema(self, cache):
+        """Test removing all entries for a schema."""
+        table1 = TableInfo("DB1", "SCH1", "TAB1", "TABLE", [])
+        table2 = TableInfo("DB1", "SCH1", "TAB2", "TABLE", [])
+        table3 = TableInfo("DB1", "SCH2", "TAB3", "TABLE", [])
+        for t in [table1, table2, table3]:
+            cache.add_table(t)
+        cache.schema_last_altered["DB1.SCH1"] = "2026-01-01"
+
+        removed = cache.remove_schema("DB1", "SCH1")
+
+        assert removed == 2
+        assert cache.get_table("DB1", "SCH1", "TAB1") is None
+        assert cache.get_table("DB1", "SCH1", "TAB2") is None
+        assert cache.get_table("DB1", "SCH2", "TAB3") is not None
+        assert cache.get_schema_last_altered("DB1", "SCH1") is None
+
+    def test_get_schema_last_altered(self, cache):
+        """Test getting schema last altered timestamp."""
+        assert cache.get_schema_last_altered("DB1", "SCH1") is None
+
+        cache.schema_last_altered["DB1.SCH1"] = "2026-04-08T12:00:00"
+        assert cache.get_schema_last_altered("DB1", "SCH1") == "2026-04-08T12:00:00"
+
+    def test_save_load_schema_last_altered(self, cache):
+        """Test that schema_last_altered persists through save/load."""
+        table = TableInfo("DB1", "SCH1", "TAB1", "TABLE", [])
+        cache.add_table(table)
+        cache.last_refresh = datetime.now()
+        cache.schema_last_altered["DB1.SCH1"] = "2026-04-08T12:00:00"
+
+        cache.save()
+
+        cache2 = SchemaCache(cache_dir=cache.cache_dir)
+        cache2.load()
+
+        assert cache2.schema_last_altered.get("DB1.SCH1") == "2026-04-08T12:00:00"
+
+    def test_load_v1_cache_migration(self, temp_cache_dir):
+        """Test loading a v1.0 cache file gracefully."""
+        import json
+
+        # v1.0 has no schema_last_altered or column_count
+        cache_file = temp_cache_dir / "schema_cache.json"
+        cache_data = {
+            "version": "1.0",
+            "last_refresh": datetime.now().isoformat(),
+            "ttl_days": 5,
+            "tables": {
+                "DB1.SCH1.TAB1": {
+                    "database": "DB1",
+                    "schema": "SCH1",
+                    "table_name": "TAB1",
+                    "table_type": "TABLE",
+                    "columns": [
+                        {"name": "ID", "data_type": "NUMBER",
+                         "is_nullable": False, "ordinal_position": 1},
+                    ],
+                }
+            },
+            "databases": ["DB1"],
+        }
+        with open(cache_file, "w") as f:
+            json.dump(cache_data, f)
+
+        cache = SchemaCache(cache_dir=temp_cache_dir)
+        assert cache.schema_last_altered == {}
+        # column_count should be computed from len(columns)
+        tab = cache.get_table("DB1", "SCH1", "TAB1")
+        assert tab is not None
+        assert tab.column_count == 1
 
     def test_error_log_operations(self, cache):
         """Test error log save/load/clear."""
