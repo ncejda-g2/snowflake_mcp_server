@@ -5,6 +5,22 @@ All notable changes to the Snowflake MCP Server will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-04-09
+
+### Changed
+- **Two-tier cache**: Catalog refresh now queries only `INFORMATION_SCHEMA.TABLES` + column counts (no full column detail). Refresh drops from ~12min to ~3.5min, cache from 67MB to 8.6MB.
+- **On-demand column loading**: `describe_table` fetches column details live via `DESCRIBE TABLE` on first call (~200ms), then caches for subsequent calls.
+- **Schema-level incremental refresh**: Each schema is scanned independently with `LAST_ALTERED` smart-skip for unchanged schemas. Partial failures no longer wipe the entire cache.
+- **Removed client-side timeouts**: Removed `network_timeout` and `STATEMENT_TIMEOUT_IN_SECONDS` — Snowflake handles timeouts server-side.
+
+### Added
+- `column_count` field on `TableInfo` for lightweight table browsing without loading column details
+- `Dockerfile` for containerized deployment via ToolHive
+- Schema-level checkpointing with resume support
+
+### Fixed
+- GDC database (21,468 tables) no longer times out during catalog refresh
+
 ## [0.1.19] - 2026-03-24
 
 ### Fixed
