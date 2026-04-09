@@ -47,9 +47,7 @@ async def describe_table(
 
         # On-demand column loading: fetch if columns are empty
         if not table_info.columns and connection is not None:
-            logger.info(
-                f"Fetching columns on-demand for {database}.{schema}.{table}"
-            )
+            logger.info(f"Fetching columns on-demand for {database}.{schema}.{table}")
             try:
                 raw_columns = connection.get_table_columns(database, schema, table)
                 if raw_columns:

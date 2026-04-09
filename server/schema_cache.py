@@ -105,9 +105,9 @@ class SchemaCache:
         self.processed_databases: set[str] = (
             set()
         )  # Track processed databases for resume
-        self.schema_last_altered: dict[str, str] = (
-            {}
-        )  # "DB.SCHEMA" -> max LAST_ALTERED ISO string
+        self.schema_last_altered: dict[
+            str, str
+        ] = {}  # "DB.SCHEMA" -> max LAST_ALTERED ISO string
 
         # Thread safety
         self._lock = Lock()
@@ -320,9 +320,7 @@ class SchemaCache:
 
         return sorted(schemas)
 
-    def save_checkpoint(
-        self, database: str, schema: str, results: list[dict]
-    ) -> None:
+    def save_checkpoint(self, database: str, schema: str, results: list[dict]) -> None:
         """
         Save a checkpoint file for a single schema.
 
@@ -331,9 +329,7 @@ class SchemaCache:
             schema: Schema name
             results: Query results for this schema
         """
-        checkpoint_file = (
-            self.checkpoint_dir / f"checkpoint_{database}__{schema}.json"
-        )
+        checkpoint_file = self.checkpoint_dir / f"checkpoint_{database}__{schema}.json"
 
         try:
             checkpoint_data = {
@@ -349,9 +345,7 @@ class SchemaCache:
             self.logger.debug(f"Checkpoint saved for {database}.{schema}")
 
         except Exception as e:
-            self.logger.error(
-                f"Failed to save checkpoint for {database}.{schema}: {e}"
-            )
+            self.logger.error(f"Failed to save checkpoint for {database}.{schema}: {e}")
 
     def load_checkpoints(self) -> tuple[list[dict], set[str]]:
         """
@@ -608,9 +602,7 @@ class SchemaCache:
                 )
                 self.ttl_days = cache_data.get("ttl_days", self.ttl_days)
                 self.databases = set(cache_data.get("databases", []))
-                self.schema_last_altered = cache_data.get(
-                    "schema_last_altered", {}
-                )
+                self.schema_last_altered = cache_data.get("schema_last_altered", {})
 
                 # Load tables
                 self.tables.clear()

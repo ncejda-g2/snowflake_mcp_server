@@ -105,9 +105,7 @@ async def test_checkpointing():
 
     # Test loading checkpoints
     loaded_results, loaded_schemas = cache.load_checkpoints()
-    print(
-        f"Loaded {len(loaded_results)} results from {len(loaded_schemas)} schemas"
-    )
+    print(f"Loaded {len(loaded_results)} results from {len(loaded_schemas)} schemas")
     print(f"Processed schemas: {loaded_schemas}")
 
     # Test 3: Resume from checkpoint

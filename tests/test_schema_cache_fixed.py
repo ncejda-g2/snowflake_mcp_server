@@ -188,8 +188,12 @@ class TestSchemaCache:
         """Test getting cache statistics."""
         # Add some tables
         table1 = TableInfo(
-            "DB1", "SCH1", "TAB1", "TABLE",
-            [ColumnInfo("col1", "VARCHAR", True, 1)], column_count=1,
+            "DB1",
+            "SCH1",
+            "TAB1",
+            "TABLE",
+            [ColumnInfo("col1", "VARCHAR", True, 1)],
+            column_count=1,
         )
         table2 = TableInfo("DB1", "SCH2", "TAB2", "VIEW", [], column_count=3)
 
@@ -250,8 +254,11 @@ class TestSchemaCache:
         column_counts = {"NEW_TAB": 5}
 
         count = cache.merge_schema_results(
-            "DB1", "SCH1", table_results,
-            column_counts=column_counts, max_last_altered="2026-01-01",
+            "DB1",
+            "SCH1",
+            table_results,
+            column_counts=column_counts,
+            max_last_altered="2026-01-01",
         )
 
         assert count == 1
@@ -346,8 +353,12 @@ class TestSchemaCache:
                     "table_name": "TAB1",
                     "table_type": "TABLE",
                     "columns": [
-                        {"name": "ID", "data_type": "NUMBER",
-                         "is_nullable": False, "ordinal_position": 1},
+                        {
+                            "name": "ID",
+                            "data_type": "NUMBER",
+                            "is_nullable": False,
+                            "ordinal_position": 1,
+                        },
                     ],
                 }
             },

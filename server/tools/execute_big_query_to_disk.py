@@ -191,9 +191,7 @@ async def execute_big_query_to_disk(
     try:
         # Use context manager for CSV file
         with open(expanded_path, "w", newline="", encoding="utf-8") as csvfile:
-            logger.info(
-                f"Streaming query results to {os.path.abspath(expanded_path)}"
-            )
+            logger.info(f"Streaming query results to {os.path.abspath(expanded_path)}")
 
             first_batch = True
             csv_writer = None

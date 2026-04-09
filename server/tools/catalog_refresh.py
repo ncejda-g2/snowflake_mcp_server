@@ -101,28 +101,19 @@ async def refresh_catalog(
                 continue
 
             # Filter out system schemas
-            schemas = [
-                s
-                for s in schemas
-                if s.upper() not in ("INFORMATION_SCHEMA",)
-            ]
+            schemas = [s for s in schemas if s.upper() not in ("INFORMATION_SCHEMA",)]
 
             for schema_name in schemas:
                 schema_key = f"{database}.{schema_name}"
 
                 # Skip if already processed from checkpoint
-                if (
-                    schema_key in processed_schemas
-                    and schema_key not in failed_schemas
-                ):
+                if schema_key in processed_schemas and schema_key not in failed_schemas:
                     logger.debug(f"Skipping checkpointed schema: {schema_key}")
                     continue
 
                 # LAST_ALTERED optimization: skip unchanged schemas
                 if not force:
-                    cached_max_la = cache.get_schema_last_altered(
-                        database, schema_name
-                    )
+                    cached_max_la = cache.get_schema_last_altered(database, schema_name)
                     if cached_max_la and _schema_unchanged(
                         connection, database, schema_name, cached_max_la
                     ):
@@ -168,17 +159,13 @@ async def refresh_catalog(
                             column_counts=column_counts,
                             max_last_altered=max_la,
                         )
-                        cache.save_checkpoint(
-                            database, schema_name, tables_result.data
-                        )
+                        cache.save_checkpoint(database, schema_name, tables_result.data)
 
                         processed_schemas.add(schema_key)
                         schemas_scanned += 1
                         total_tables += table_count
 
-                        logger.info(
-                            f"Scanned {schema_key}: {table_count} tables"
-                        )
+                        logger.info(f"Scanned {schema_key}: {table_count} tables")
                     else:
                         # Schema exists but has no tables
                         cache.remove_schema(database, schema_name)
@@ -215,9 +202,7 @@ async def refresh_catalog(
             "tables_found": total_tables,
             "schemas_scanned": schemas_scanned,
             "schemas_skipped": schemas_skipped,
-            "databases_failed": len(
-                {k.split(".")[0] for k in errors}
-            ),
+            "databases_failed": len({k.split(".")[0] for k in errors}),
             "errors": list(errors.values()) if errors else None,
             "failed_schemas": list(errors.keys()) if errors else None,
             "statistics": stats,
