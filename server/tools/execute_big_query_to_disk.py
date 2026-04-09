@@ -191,72 +191,53 @@ async def execute_big_query_to_disk(
     try:
         # Use context manager for CSV file
         with open(expanded_path, "w", newline="", encoding="utf-8") as csvfile:
-            logger.info(
-                f"Executing query with {timeout_seconds}s timeout and streaming to {os.path.abspath(expanded_path)}"
-            )
+            logger.info(f"Streaming query results to {os.path.abspath(expanded_path)}")
 
-            # Set timeout for this query
-            if connection.connection:
-                with connection.connection.cursor() as cursor:
-                    cursor.execute(
-                        f"ALTER SESSION SET STATEMENT_TIMEOUT_IN_SECONDS = {timeout_seconds}"
-                    )
+            first_batch = True
+            csv_writer = None
 
-            # Execute query using streaming
-            try:
-                first_batch = True
-                csv_writer = None
-
-                for batch in connection.execute_query_stream(
-                    sql=sql,
-                    database=database,
-                    schema=schema,
-                    batch_size=STREAMING_BATCH_SIZE,
-                ):
-                    if first_batch:
-                        # Get column names from first batch
-                        if batch:
-                            column_names = list(batch[0].keys())
-                            csv_writer = csv.DictWriter(
-                                csvfile,
-                                fieldnames=column_names,
-                                delimiter=CSV_DELIMITER,
-                                restval=CSV_NULL_VALUE,
-                            )
-
-                            # Write headers if configured
-                            if CSV_INCLUDE_HEADERS:
-                                csv_writer.writeheader()
-                        first_batch = False
-
-                    # Write batch to CSV
-                    if csv_writer:
-                        for row in batch:
-                            # Convert values to strings, handling None and datetime
-                            csv_row = {}
-                            for col_name in column_names:
-                                value = row.get(col_name)
-                                if value is None:
-                                    csv_row[col_name] = CSV_NULL_VALUE
-                                elif isinstance(value, datetime):
-                                    csv_row[col_name] = value.isoformat()
-                                else:
-                                    csv_row[col_name] = str(value)
-
-                            csv_writer.writerow(csv_row)
-                            row_count += 1
-
-                    # Log progress every 100k rows
-                    if row_count > 0 and row_count % 100000 == 0:
-                        logger.info(f"Streamed {row_count:,} rows to disk...")
-
-            finally:
-                # Restore to default timeout (300 seconds)
-                if connection.connection:
-                    with connection.connection.cursor() as cursor:
-                        cursor.execute(
-                            "ALTER SESSION SET STATEMENT_TIMEOUT_IN_SECONDS = 300"
+            for batch in connection.execute_query_stream(
+                sql=sql,
+                database=database,
+                schema=schema,
+                batch_size=STREAMING_BATCH_SIZE,
+            ):
+                if first_batch:
+                    # Get column names from first batch
+                    if batch:
+                        column_names = list(batch[0].keys())
+                        csv_writer = csv.DictWriter(
+                            csvfile,
+                            fieldnames=column_names,
+                            delimiter=CSV_DELIMITER,
+                            restval=CSV_NULL_VALUE,
                         )
+
+                        # Write headers if configured
+                        if CSV_INCLUDE_HEADERS:
+                            csv_writer.writeheader()
+                    first_batch = False
+
+                # Write batch to CSV
+                if csv_writer:
+                    for row in batch:
+                        # Convert values to strings, handling None and datetime
+                        csv_row = {}
+                        for col_name in column_names:
+                            value = row.get(col_name)
+                            if value is None:
+                                csv_row[col_name] = CSV_NULL_VALUE
+                            elif isinstance(value, datetime):
+                                csv_row[col_name] = value.isoformat()
+                            else:
+                                csv_row[col_name] = str(value)
+
+                        csv_writer.writerow(csv_row)
+                        row_count += 1
+
+                # Log progress every 100k rows
+                if row_count > 0 and row_count % 100000 == 0:
+                    logger.info(f"Streamed {row_count:,} rows to disk...")
 
         # File is now closed by context manager
         # Get file size

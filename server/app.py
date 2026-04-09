@@ -219,9 +219,9 @@ async def find_tables_tool(search_term: str) -> dict[str, Any]:
     - For each column: name, data_type, nullable, position, default, comment, is_primary_key
 
     HOW IT WORKS:
-    - Looks up table in cache only (never queries Snowflake for table details)
-    - If table not in cache, returns error (use show_tables or find_tables first)
-    - No authentication required if cache is populated
+    - Looks up table in cache; fetches column details on-demand if not yet loaded
+    - First call for a table queries Snowflake live (~200ms), subsequent calls use cache
+    - If table not in cache at all, returns error (use show_tables or find_tables first)
 
     Note: To get sample data rows, use execute_query tool separately.
 
@@ -240,7 +240,7 @@ async def describe_table_tool(
     schema: str,
     table: str,
 ) -> dict[str, Any]:
-    """Get detailed column information for a specific table from cache."""
+    """Get detailed column information for a specific table."""
     try:
         initialize_resources()
     except Exception as e:
@@ -250,6 +250,7 @@ async def describe_table_tool(
         raise RuntimeError("Cache initialization failed")
     return await table_inspector.describe_table(
         cache,
+        connection=connection,
         database=database,
         schema=schema,
         table=table,

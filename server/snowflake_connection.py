@@ -341,7 +341,6 @@ class SnowflakeConnection:
                     role=creds.get("role", self.config.role),
                     warehouse=creds.get("warehouse", self.config.warehouse),
                     client_session_keep_alive=True,
-                    network_timeout=30,
                     login_timeout=10,
                     ocsp_fail_open=False,
                     validate_default_parameters=True,
@@ -356,7 +355,6 @@ class SnowflakeConnection:
                     role=self.config.role,
                     warehouse=self.config.warehouse,
                     client_session_keep_alive=True,
-                    network_timeout=30,
                     login_timeout=10,
                     ocsp_fail_open=False,
                     validate_default_parameters=True,
@@ -380,7 +378,6 @@ class SnowflakeConnection:
         with self.connection.cursor() as cursor:
             # Set session parameters for safety
             session_params = [
-                ("STATEMENT_TIMEOUT_IN_SECONDS", "300"),  # 5 minute timeout
                 ("QUERY_TAG", "'SNOWFLAKE_MCP_READ_ONLY'"),
                 ("ABORT_DETACHED_QUERY", "TRUE"),
             ]

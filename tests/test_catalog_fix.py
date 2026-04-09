@@ -65,7 +65,8 @@ async def test_catalog_refresh():
 
     print(f"\nRefresh result: {result['status']}")
     print(f"Tables found: {result.get('tables_found', 0)}")
-    print(f"Databases scanned: {result.get('databases_scanned', 0)}")
+    print(f"Schemas scanned: {result.get('schemas_scanned', 0)}")
+    print(f"Schemas skipped: {result.get('schemas_skipped', 0)}")
 
     if result.get("statistics"):
         stats = result["statistics"]

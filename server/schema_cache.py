@@ -31,6 +31,7 @@ class TableInfo:
     table_name: str
     table_type: str  # TABLE, VIEW, etc.
     columns: list[ColumnInfo]
+    column_count: int = 0
     row_count: int | None = None
     bytes: int | None = None
     comment: str | None = None
@@ -49,6 +50,7 @@ class TableInfo:
             "table_name": self.table_name,
             "table_type": self.table_type,
             "columns": [asdict(col) for col in self.columns],
+            "column_count": self.column_count,
             "row_count": self.row_count,
             "bytes": self.bytes,
             "comment": self.comment,
@@ -59,12 +61,14 @@ class TableInfo:
     def from_dict(cls, data: dict) -> "TableInfo":
         """Create from dictionary."""
         columns = [ColumnInfo(**col) for col in data.get("columns", [])]
+        column_count = data.get("column_count", len(columns))
         return cls(
             database=data["database"],
             schema=data["schema"],
             table_name=data["table_name"],
             table_type=data.get("table_type", "TABLE"),
             columns=columns,
+            column_count=column_count,
             row_count=data.get("row_count"),
             bytes=data.get("bytes"),
             comment=data.get("comment"),
@@ -101,6 +105,9 @@ class SchemaCache:
         self.processed_databases: set[str] = (
             set()
         )  # Track processed databases for resume
+        self.schema_last_altered: dict[
+            str, str
+        ] = {}  # "DB.SCHEMA" -> max LAST_ALTERED ISO string
 
         # Thread safety
         self._lock = Lock()
@@ -196,6 +203,108 @@ class SchemaCache:
 
         return results
 
+    def get_schema_last_altered(self, database: str, schema: str) -> str | None:
+        """Get the stored max LAST_ALTERED for a schema, or None if unknown."""
+        key = f"{database}.{schema}".upper()
+        return self.schema_last_altered.get(key)
+
+    def merge_schema_results(
+        self,
+        database: str,
+        schema: str,
+        table_results: list[dict],
+        column_counts: dict[str, int] | None = None,
+        max_last_altered: str | None = None,
+    ) -> int:
+        """Merge table-level results for a single schema into the cache.
+
+        Removes all existing entries for this database.schema,
+        then adds the new ones. Tables in other schemas are untouched.
+        Columns are NOT loaded here — they are fetched on-demand by describe_table.
+
+        Args:
+            database: Database name
+            schema: Schema name
+            table_results: INFORMATION_SCHEMA.TABLES query results (one row per table)
+            column_counts: Optional dict mapping TABLE_NAME -> column count
+            max_last_altered: The max LAST_ALTERED value for this schema
+
+        Returns:
+            Number of tables in this schema after merge
+        """
+        if column_counts is None:
+            column_counts = {}
+
+        with self._lock:
+            prefix = f"{database}.{schema}.".upper()
+
+            # Remove existing entries for this schema (preserve columns if table still exists)
+            old_columns: dict[str, list[ColumnInfo]] = {}
+            keys_to_remove = [k for k in self.tables if k.startswith(prefix)]
+            for key in keys_to_remove:
+                old_table = self.tables[key]
+                if old_table.columns:
+                    old_columns[key] = old_table.columns
+                del self.tables[key]
+
+            table_count = 0
+            for row in table_results:
+                db = row.get("TABLE_CATALOG", row.get("table_catalog", ""))
+                sch = row.get("TABLE_SCHEMA", row.get("table_schema", ""))
+                table_name = row.get("TABLE_NAME", row.get("table_name", ""))
+                table_type = row.get("TABLE_TYPE", row.get("table_type", "TABLE"))
+
+                if sch.upper() in ("INFORMATION_SCHEMA", "SNOWFLAKE"):
+                    continue
+
+                table_key = f"{db}.{sch}.{table_name}".upper()
+
+                # Preserve previously-loaded columns if available
+                columns = old_columns.get(table_key, [])
+                col_count = column_counts.get(table_name, len(columns))
+
+                table_info = TableInfo(
+                    database=db,
+                    schema=sch,
+                    table_name=table_name,
+                    table_type=table_type,
+                    columns=columns,
+                    column_count=col_count,
+                    row_count=row.get("ROW_COUNT", row.get("row_count")),
+                    bytes=row.get("BYTES", row.get("bytes")),
+                    comment=row.get("COMMENT", row.get("comment")),
+                    last_altered=str(row.get("LAST_ALTERED", ""))
+                    if row.get("LAST_ALTERED")
+                    else None,
+                )
+                self.tables[table_key] = table_info
+                self.databases.add(db.upper())
+                table_count += 1
+
+            # Update schema_last_altered
+            schema_key = f"{database}.{schema}".upper()
+            if max_last_altered:
+                self.schema_last_altered[schema_key] = max_last_altered
+
+            return table_count
+
+    def remove_schema(self, database: str, schema: str) -> int:
+        """Remove all cached entries for a database.schema.
+
+        Returns:
+            Number of entries removed.
+        """
+        with self._lock:
+            prefix = f"{database}.{schema}.".upper()
+            keys_to_remove = [k for k in self.tables if k.startswith(prefix)]
+            for key in keys_to_remove:
+                del self.tables[key]
+
+            schema_key = f"{database}.{schema}".upper()
+            self.schema_last_altered.pop(schema_key, None)
+
+            return len(keys_to_remove)
+
     def get_databases(self) -> list[str]:
         """Get list of all cached databases."""
         return sorted(self.databases)
@@ -211,45 +320,47 @@ class SchemaCache:
 
         return sorted(schemas)
 
-    def save_checkpoint(self, database: str, results: list[dict]) -> None:
+    def save_checkpoint(self, database: str, schema: str, results: list[dict]) -> None:
         """
-        Save a checkpoint file for a single database.
+        Save a checkpoint file for a single schema.
 
         Args:
             database: Database name
-            results: Query results for this database
+            schema: Schema name
+            results: Query results for this schema
         """
-        checkpoint_file = self.checkpoint_dir / f"checkpoint_{database}.json"
+        checkpoint_file = self.checkpoint_dir / f"checkpoint_{database}__{schema}.json"
 
         try:
             checkpoint_data = {
                 "database": database,
+                "schema": schema,
                 "timestamp": datetime.now().isoformat(),
                 "results": results,
             }
 
             with open(checkpoint_file, "w") as f:
-                json.dump(checkpoint_data, f)
+                json.dump(checkpoint_data, f, default=str)
 
-            self.logger.debug(f"Checkpoint saved for database {database}")
+            self.logger.debug(f"Checkpoint saved for {database}.{schema}")
 
         except Exception as e:
-            self.logger.error(f"Failed to save checkpoint for {database}: {e}")
+            self.logger.error(f"Failed to save checkpoint for {database}.{schema}: {e}")
 
     def load_checkpoints(self) -> tuple[list[dict], set[str]]:
         """
         Load all checkpoint files and return combined results.
 
         Returns:
-            Tuple of (combined results, set of processed databases)
+            Tuple of (combined results, set of processed schema keys "DB.SCHEMA")
         """
         all_results: list[dict] = []
-        processed_databases: set[str] = set()
+        processed_schemas: set[str] = set()
 
         if not self.checkpoint_dir.exists():
-            return all_results, processed_databases
+            return all_results, processed_schemas
 
-        checkpoint_files = list(self.checkpoint_dir.glob("checkpoint_*.json"))
+        checkpoint_files = list(self.checkpoint_dir.glob("checkpoint_*__*.json"))
 
         for checkpoint_file in checkpoint_files:
             try:
@@ -257,12 +368,13 @@ class SchemaCache:
                     checkpoint_data = json.load(f)
 
                 database = checkpoint_data["database"]
+                schema = checkpoint_data["schema"]
                 results = checkpoint_data["results"]
 
                 all_results.extend(results)
-                processed_databases.add(database)
+                processed_schemas.add(f"{database}.{schema}")
 
-                self.logger.debug(f"Loaded checkpoint for database {database}")
+                self.logger.debug(f"Loaded checkpoint for {database}.{schema}")
 
             except Exception as e:
                 self.logger.error(f"Failed to load checkpoint {checkpoint_file}: {e}")
@@ -270,11 +382,12 @@ class SchemaCache:
         self.logger.info(
             f"Loaded {len(checkpoint_files)} checkpoints with {len(all_results)} total results"
         )
-        return all_results, processed_databases
+        return all_results, processed_schemas
 
     def clear_checkpoints(self) -> None:
         """
         Remove all checkpoint files after successful completion.
+        Handles both old (per-database) and new (per-schema) checkpoint formats.
         """
         if not self.checkpoint_dir.exists():
             return
@@ -436,13 +549,14 @@ class SchemaCache:
         """Save cache to disk."""
         try:
             cache_data = {
-                "version": "1.0",
+                "version": "1.2",
                 "last_refresh": self.last_refresh.isoformat()
                 if self.last_refresh
                 else None,
                 "ttl_days": self.ttl_days,
                 "tables": {key: table.to_dict() for key, table in self.tables.items()},
                 "databases": list(self.databases),
+                "schema_last_altered": self.schema_last_altered,
             }
 
             # Write to temporary file first (atomic write)
@@ -475,7 +589,7 @@ class SchemaCache:
 
             # Check version compatibility
             version = cache_data.get("version", "0.0")
-            if version != "1.0":
+            if version not in ("1.0", "1.1", "1.2"):
                 self.logger.warning(f"Cache version mismatch: {version}")
                 return False
 
@@ -488,6 +602,7 @@ class SchemaCache:
                 )
                 self.ttl_days = cache_data.get("ttl_days", self.ttl_days)
                 self.databases = set(cache_data.get("databases", []))
+                self.schema_last_altered = cache_data.get("schema_last_altered", {})
 
                 # Load tables
                 self.tables.clear()
@@ -531,7 +646,7 @@ class SchemaCache:
             tables = self.get_tables_in_database(db)
             db_stats[db] = {
                 "table_count": len(tables),
-                "total_columns": sum(len(t.columns) for t in tables),
+                "total_columns": sum(t.column_count for t in tables),
             }
         stats["databases"] = db_stats
 
