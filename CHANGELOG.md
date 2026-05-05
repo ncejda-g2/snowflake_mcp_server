@@ -5,7 +5,7 @@ All notable changes to the Snowflake MCP Server will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.2.2] - 2026-05-05
 
 ### Fixed
 - `refresh_catalog` no longer reports `partial_success` for Snowflake-managed share databases (e.g. `SNOWFLAKE$GDS`) or per-user personal databases (e.g. `USER$<email>`). Metadata queries (`SHOW SCHEMAS`, `SHOW TABLES`, `DESCRIBE TABLE`) now wrap database/schema/table names in double quotes instead of rejecting any name outside `[A-Za-z0-9_]`. Identifiers containing a literal `"` are still rejected. (#47)
