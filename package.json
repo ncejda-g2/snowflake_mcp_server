@@ -1,6 +1,6 @@
 {
   "name": "snowflake-readonly-mcp",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "A Snowflake read-only MCP server with key-pair and browser SSO authentication",
   "author": "Nicholas Cejda <ncejda@g2.com>",
   "license": "MIT",
