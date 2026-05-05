@@ -39,10 +39,13 @@ jobs:
 
           if [ -n "$REQUESTED_VERSION" ]; then
             echo "Manual release/recovery requested for version: $REQUESTED_VERSION"
+            echo "manual_recovery=true" >> $GITHUB_OUTPUT
             echo "version_changed=true" >> $GITHUB_OUTPUT
             echo "new_version=$REQUESTED_VERSION" >> $GITHUB_OUTPUT
             exit 0
           fi
+
+          echo "manual_recovery=false" >> $GITHUB_OUTPUT
 
           PREVIOUS_VERSION=$(git show HEAD~1:pyproject.toml | grep -oP 'version = "\K[^"]+' | head -1)
 
@@ -68,6 +71,11 @@ jobs:
             TAG_COMMIT=$(git rev-list -n 1 "$VERSION")
 
             if [ "$TAG_COMMIT" != "$HEAD_COMMIT" ]; then
+              if [ "${{ steps.version-check.outputs.manual_recovery }}" = "true" ]; then
+                echo "Tag $VERSION already exists at $TAG_COMMIT; manual recovery will reuse it while running at HEAD $HEAD_COMMIT"
+                exit 0
+              fi
+
               echo "Tag $VERSION already exists at $TAG_COMMIT, but HEAD is $HEAD_COMMIT"
               exit 1
             fi
@@ -80,6 +88,11 @@ jobs:
             TAG_COMMIT=$(cut -f1 /tmp/tag-ref)
 
             if [ "$TAG_COMMIT" != "$HEAD_COMMIT" ]; then
+              if [ "${{ steps.version-check.outputs.manual_recovery }}" = "true" ]; then
+                echo "Remote tag $VERSION already exists at $TAG_COMMIT; manual recovery will reuse it while running at HEAD $HEAD_COMMIT"
+                exit 0
+              fi
+
               echo "Remote tag $VERSION already exists at $TAG_COMMIT, but HEAD is $HEAD_COMMIT"
               exit 1
             fi
