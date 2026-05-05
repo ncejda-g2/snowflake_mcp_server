@@ -59,10 +59,10 @@ jobs:
         if: steps.version-check.outputs.version_changed == 'true'
         run: |
           VERSION="v${{ steps.version-check.outputs.new_version }}"
+          HEAD_COMMIT=$(git rev-parse HEAD)
 
           if git rev-parse "$VERSION" >/dev/null 2>&1; then
             TAG_COMMIT=$(git rev-list -n 1 "$VERSION")
-            HEAD_COMMIT=$(git rev-parse HEAD)
 
             if [ "$TAG_COMMIT" != "$HEAD_COMMIT" ]; then
               echo "Tag $VERSION already exists at $TAG_COMMIT, but HEAD is $HEAD_COMMIT"
@@ -70,6 +70,18 @@ jobs:
             fi
 
             echo "Tag $VERSION already points to HEAD, reusing it"
+            exit 0
+          fi
+
+          if git ls-remote --exit-code --tags origin "refs/tags/$VERSION" >/tmp/tag-ref 2>/dev/null; then
+            TAG_COMMIT=$(cut -f1 /tmp/tag-ref)
+
+            if [ "$TAG_COMMIT" != "$HEAD_COMMIT" ]; then
+              echo "Remote tag $VERSION already exists at $TAG_COMMIT, but HEAD is $HEAD_COMMIT"
+              exit 1
+            fi
+
+            echo "Remote tag $VERSION already points to HEAD, reusing it"
             exit 0
           fi
 
