@@ -411,3 +411,141 @@ class TestSnowflakeConnection:
                 assert conn.connection is not None
 
             mock_conn.close.assert_called_once()
+
+
+class TestQuoteIdentifier:
+    def test_quotes_bare_identifier(self):
+        assert SnowflakeConnection._quote_identifier("MY_DB", "database") == '"MY_DB"'
+
+    def test_quotes_identifier_with_dollar(self):
+        # Snowflake-managed share databases (e.g. SNOWFLAKE$GDS) - issue #47.
+        assert (
+            SnowflakeConnection._quote_identifier("SNOWFLAKE$GDS", "database")
+            == '"SNOWFLAKE$GDS"'
+        )
+
+    def test_quotes_identifier_with_at_and_dot(self):
+        # Snowflake personal databases (USER$<email>) contain @ and . - issue #47.
+        name = "USER$NCEJDA@G2.COM"
+        assert (
+            SnowflakeConnection._quote_identifier(name, "database")
+            == f'"{name}"'
+        )
+
+    def test_rejects_empty_name(self):
+        with pytest.raises(ValueError, match="empty"):
+            SnowflakeConnection._quote_identifier("", "database")
+
+    def test_rejects_embedded_double_quote(self):
+        with pytest.raises(ValueError, match="Invalid database name"):
+            SnowflakeConnection._quote_identifier('foo"bar', "database")
+
+    def test_error_uses_kind_label(self):
+        with pytest.raises(ValueError, match="Invalid table name"):
+            SnowflakeConnection._quote_identifier('a"b', "table")
+
+
+class TestMetadataQueriesQuoteIdentifiers:
+    """Verify get_schemas/get_tables/get_table_columns quote names safely.
+
+    Regression coverage for issue #47: databases like SNOWFLAKE$GDS and
+    USER$<email> were previously rejected by a strict ^[a-zA-Z0-9_]+$
+    validator. They must now flow through quoted identifiers instead.
+    """
+
+    @pytest.fixture
+    def mock_config(self):
+        config = Mock(spec=Config)
+        config.account = "test123.us-east-1"
+        config.username = "testuser"
+        config.warehouse = "TEST_WH"
+        config.role = "TEST_ROLE"
+        config.debug = False
+        config.credential_file = None
+        return config
+
+    @pytest.fixture
+    def connection(self, mock_config):
+        with patch("server.snowflake_connection.snowflake.connector"):
+            return SnowflakeConnection(mock_config)
+
+    def test_get_schemas_quotes_dollar_database(self, connection):
+        from server.snowflake_connection import QueryResult
+
+        with patch.object(connection, "execute_query") as mock_execute:
+            mock_execute.return_value = QueryResult(
+                data=[{"name": "INFORMATION_SCHEMA"}, {"name": "PUBLIC"}],
+                columns=[{"name": "name"}],
+                row_count=2,
+                execution_time=0.0,
+            )
+
+            schemas = connection.get_schemas("SNOWFLAKE$GDS")
+
+            mock_execute.assert_called_once_with(
+                'SHOW SCHEMAS IN DATABASE "SNOWFLAKE$GDS"'
+            )
+            assert schemas == ["INFORMATION_SCHEMA", "PUBLIC"]
+
+    def test_get_schemas_quotes_user_database(self, connection):
+        from server.snowflake_connection import QueryResult
+
+        with patch.object(connection, "execute_query") as mock_execute:
+            mock_execute.return_value = QueryResult(
+                data=[],
+                columns=[],
+                row_count=0,
+                execution_time=0.0,
+            )
+
+            connection.get_schemas("USER$NCEJDA@G2.COM")
+
+            mock_execute.assert_called_once_with(
+                'SHOW SCHEMAS IN DATABASE "USER$NCEJDA@G2.COM"'
+            )
+
+    def test_get_tables_quotes_both_identifiers(self, connection):
+        from server.snowflake_connection import QueryResult
+
+        with patch.object(connection, "execute_query") as mock_execute:
+            mock_execute.return_value = QueryResult(
+                data=[],
+                columns=[],
+                row_count=0,
+                execution_time=0.0,
+            )
+
+            connection.get_tables("SNOWFLAKE$GDS", "PUBLIC")
+
+            mock_execute.assert_called_once_with(
+                'SHOW TABLES IN "SNOWFLAKE$GDS"."PUBLIC"'
+            )
+
+    def test_get_table_columns_quotes_all_identifiers(self, connection):
+        from server.snowflake_connection import QueryResult
+
+        with patch.object(connection, "execute_query") as mock_execute:
+            mock_execute.return_value = QueryResult(
+                data=[],
+                columns=[],
+                row_count=0,
+                execution_time=0.0,
+            )
+
+            connection.get_table_columns("MY_DB", "PUBLIC", "ORDERS")
+
+            mock_execute.assert_called_once_with(
+                'DESCRIBE TABLE "MY_DB"."PUBLIC"."ORDERS"'
+            )
+
+    def test_get_schemas_rejects_embedded_quote(self, connection):
+        with pytest.raises(ValueError, match="Invalid database name"):
+            connection.get_schemas('evil"name')
+
+    def test_get_tables_rejects_embedded_quote_in_schema(self, connection):
+        with pytest.raises(ValueError, match="Invalid schema name"):
+            connection.get_tables("MY_DB", 'evil"schema')
+
+    def test_get_table_columns_rejects_embedded_quote_in_table(self, connection):
+        with pytest.raises(ValueError, match="Invalid table name"):
+            connection.get_table_columns("MY_DB", "PUBLIC", 'evil"table')

@@ -3,7 +3,6 @@
 import base64
 import json
 import logging
-import re
 import time
 from collections.abc import Generator
 from contextlib import contextmanager
@@ -604,26 +603,53 @@ class SnowflakeConnection:
             return [row["name"] for row in result.data]
         return []
 
+    @staticmethod
+    def _quote_identifier(name: str, kind: str) -> str:
+        """Wrap a Snowflake identifier in double quotes for safe SQL interpolation.
+
+        Snowflake identifiers are allowed to contain characters outside
+        ``[A-Za-z0-9_]`` (e.g. ``$`` in ``SNOWFLAKE$GDS`` or ``@`` in
+        ``USER$<email>`` personal databases). Rather than rejecting such
+        names, we quote them. We refuse names that contain a literal
+        double-quote because there is no legitimate Snowflake identifier
+        that contains an unescaped ``"``, and accepting one would risk
+        breaking out of the quoted identifier.
+
+        Args:
+            name: Identifier as returned by Snowflake (e.g. from ``SHOW DATABASES``).
+            kind: Human-readable label for error messages (``"database"``,
+                ``"schema"``, ``"table"``).
+
+        Returns:
+            The identifier wrapped in double quotes, ready to interpolate
+            into SQL (e.g. ``"SNOWFLAKE$GDS"``).
+
+        Raises:
+            ValueError: If ``name`` is empty or contains a literal ``"``.
+        """
+        if not name:
+            raise ValueError(f"Invalid {kind} name: name is empty")
+        if '"' in name:
+            raise ValueError(f"Invalid {kind} name: {name}")
+        return f'"{name}"'
+
     def get_schemas(self, database: str) -> list[str]:
         """Get list of schemas in a database."""
-        # Validate database name to prevent injection
-        if not re.match(r"^[a-zA-Z0-9_]+$", database):
-            raise ValueError(f"Invalid database name: {database}")
+        quoted_db = self._quote_identifier(database, "database")
 
-        result = self.execute_query(f"SHOW SCHEMAS IN DATABASE {database}")
+        result = self.execute_query(f"SHOW SCHEMAS IN DATABASE {quoted_db}")
         if result.data:
             return [row["name"] for row in result.data]
         return []
 
     def get_tables(self, database: str, schema: str) -> list[dict]:
         """Get detailed table information."""
-        # Validate names to prevent injection
-        if not re.match(r"^[a-zA-Z0-9_]+$", database):
-            raise ValueError(f"Invalid database name: {database}")
-        if not re.match(r"^[a-zA-Z0-9_]+$", schema):
-            raise ValueError(f"Invalid schema name: {schema}")
+        quoted_db = self._quote_identifier(database, "database")
+        quoted_schema = self._quote_identifier(schema, "schema")
 
-        result = self.execute_query(f"SHOW TABLES IN {database}.{schema}")
+        result = self.execute_query(
+            f"SHOW TABLES IN {quoted_db}.{quoted_schema}"
+        )
         if result.data:
             return [
                 {
@@ -639,15 +665,13 @@ class SnowflakeConnection:
 
     def get_table_columns(self, database: str, schema: str, table: str) -> list[dict]:
         """Get column information for a table."""
-        # Validate names
-        if not re.match(r"^[a-zA-Z0-9_]+$", database):
-            raise ValueError(f"Invalid database name: {database}")
-        if not re.match(r"^[a-zA-Z0-9_]+$", schema):
-            raise ValueError(f"Invalid schema name: {schema}")
-        if not re.match(r"^[a-zA-Z0-9_]+$", table):
-            raise ValueError(f"Invalid table name: {table}")
+        quoted_db = self._quote_identifier(database, "database")
+        quoted_schema = self._quote_identifier(schema, "schema")
+        quoted_table = self._quote_identifier(table, "table")
 
-        result = self.execute_query(f"DESCRIBE TABLE {database}.{schema}.{table}")
+        result = self.execute_query(
+            f"DESCRIBE TABLE {quoted_db}.{quoted_schema}.{quoted_table}"
+        )
         if result.data:
             return [
                 {
