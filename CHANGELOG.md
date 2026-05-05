@@ -5,6 +5,11 @@ All notable changes to the Snowflake MCP Server will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-05-05
+
+### Fixed
+- Reissue the 0.2.0 release as 0.2.1 so the GitHub release includes the MCPB desktop extension asset.
+
 ## [0.2.0] - 2026-04-09
 
 ### Changed
