@@ -7,6 +7,12 @@ on:
     paths:
       - 'pyproject.toml'
       - 'package.json'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish or recover, without leading v. Defaults to pyproject.toml version.'
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -26,6 +32,15 @@ jobs:
         id: version-check
         run: |
           CURRENT_VERSION=$(grep -oP 'version = "\K[^"]+' pyproject.toml | head -1)
+          REQUESTED_VERSION="${{ github.event.inputs.version }}"
+
+          if [ -n "$REQUESTED_VERSION" ]; then
+            echo "Manual release/recovery requested for version: $REQUESTED_VERSION"
+            echo "version_changed=true" >> $GITHUB_OUTPUT
+            echo "new_version=$REQUESTED_VERSION" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
           PREVIOUS_VERSION=$(git show HEAD~1:pyproject.toml | grep -oP 'version = "\K[^"]+' | head -1)
 
           echo "Current version: $CURRENT_VERSION"
@@ -46,7 +61,15 @@ jobs:
           VERSION="v${{ steps.version-check.outputs.new_version }}"
 
           if git rev-parse "$VERSION" >/dev/null 2>&1; then
-            echo "Tag $VERSION already exists, skipping"
+            TAG_COMMIT=$(git rev-list -n 1 "$VERSION")
+            HEAD_COMMIT=$(git rev-parse HEAD)
+
+            if [ "$TAG_COMMIT" != "$HEAD_COMMIT" ]; then
+              echo "Tag $VERSION already exists at $TAG_COMMIT, but HEAD is $HEAD_COMMIT"
+              exit 1
+            fi
+
+            echo "Tag $VERSION already points to HEAD, reusing it"
             exit 0
           fi
 
@@ -66,7 +89,7 @@ jobs:
           VERSION="v${{ steps.version-check.outputs.new_version }}"
 
           if gh release view "$VERSION" >/dev/null 2>&1; then
-            echo "Release $VERSION already exists, skipping"
+            echo "Release $VERSION already exists, reusing it"
             exit 0
           fi
 
@@ -82,26 +105,6 @@ jobs:
         with:
           node-version: '22'
           registry-url: 'https://registry.npmjs.org'
-
-      - name: Upgrade npm
-        if: steps.version-check.outputs.version_changed == 'true'
-        run: npm install -g npm@latest
-
-      - name: Publish to npm
-        if: steps.version-check.outputs.version_changed == 'true'
-        run: npm publish --provenance --access public
-
-      - name: Install uv
-        if: steps.version-check.outputs.version_changed == 'true'
-        uses: astral-sh/setup-uv@v4
-
-      - name: Build Python package
-        if: steps.version-check.outputs.version_changed == 'true'
-        run: uv build
-
-      - name: Publish to PyPI
-        if: steps.version-check.outputs.version_changed == 'true'
-        uses: pypa/gh-action-pypi-publish@release/v1
 
       - name: Build MCPB Desktop Extension
         if: steps.version-check.outputs.version_changed == 'true'
@@ -119,3 +122,36 @@ jobs:
         run: |
           VERSION="v${{ steps.version-check.outputs.new_version }}"
           gh release upload "$VERSION" "${{ env.mcpb_file }}" --clobber
+
+      - name: Publish to npm
+        if: steps.version-check.outputs.version_changed == 'true'
+        run: |
+          PACKAGE_NAME=$(node -p "require('./package.json').name")
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+
+          if npm view "$PACKAGE_NAME@$PACKAGE_VERSION" version >/tmp/npm-view-version 2>/tmp/npm-view-error; then
+            echo "$PACKAGE_NAME@$PACKAGE_VERSION is already published, skipping npm publish"
+            exit 0
+          fi
+
+          if ! grep -Eq 'E404|404 Not Found|No match found' /tmp/npm-view-error; then
+            echo "Failed to check npm package version:"
+            cat /tmp/npm-view-error
+            exit 1
+          fi
+
+          npm publish --provenance --access public
+
+      - name: Install uv
+        if: steps.version-check.outputs.version_changed == 'true'
+        uses: astral-sh/setup-uv@v4
+
+      - name: Build Python package
+        if: steps.version-check.outputs.version_changed == 'true'
+        run: uv build
+
+      - name: Publish to PyPI
+        if: steps.version-check.outputs.version_changed == 'true'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          skip-existing: true
