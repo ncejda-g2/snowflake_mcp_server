@@ -3,8 +3,18 @@
 
 import shutil
 from pathlib import Path
+from typing import Any
+from unittest.mock import Mock
 
 from server.schema_cache import SchemaCache
+from server.snowflake_connection import QueryResult
+from server.tools.catalog_refresh import (
+    _quote_string_literal,
+    _schema_unchanged,
+    _SchemaJob,
+    _submit_counts_query,
+    _submit_tables_query,
+)
 
 
 def test_checkpoint_functionality():
@@ -107,7 +117,7 @@ def test_checkpoint_functionality():
     loaded_results, _ = cache.load_checkpoints()
 
     # Group by schema and merge
-    schema_groups: dict[str, list[dict]] = {}
+    schema_groups: dict[str, list[dict[str, Any]]] = {}
     for row in loaded_results:
         db = row.get("TABLE_CATALOG", "")
         sch = row.get("TABLE_SCHEMA", "")
@@ -156,3 +166,61 @@ def test_checkpoint_functionality():
 
 if __name__ == "__main__":
     test_checkpoint_functionality()
+
+
+def test_submit_tables_query_quotes_database_identifier():
+    conn = Mock()
+    cursor = Mock()
+    cursor.sfqid = "tables-qid"
+    conn.cursor.return_value = cursor
+    job = _SchemaJob(database="USER$NCEJDA@G2.COM", schema="PUBLIC")
+
+    _submit_tables_query(conn, job)
+
+    submitted_sql = cursor.execute_async.call_args.args[0]
+    assert 'FROM "USER$NCEJDA@G2.COM".INFORMATION_SCHEMA.TABLES' in submitted_sql
+    assert "WHERE TABLE_SCHEMA = 'PUBLIC'" in submitted_sql
+    assert job.tables_qid == "tables-qid"
+    assert job.tables_cursor is cursor
+
+
+def test_submit_counts_query_quotes_database_identifier():
+    conn = Mock()
+    cursor = Mock()
+    cursor.sfqid = "counts-qid"
+    conn.cursor.return_value = cursor
+    job = _SchemaJob(database="SNOWFLAKE$GDS", schema="PUBLIC")
+
+    _submit_counts_query(conn, job)
+
+    submitted_sql = cursor.execute_async.call_args.args[0]
+    assert 'FROM "SNOWFLAKE$GDS".INFORMATION_SCHEMA.COLUMNS' in submitted_sql
+    assert "WHERE TABLE_SCHEMA = 'PUBLIC'" in submitted_sql
+    assert job.counts_qid == "counts-qid"
+    assert job.counts_cursor is cursor
+
+
+def test_schema_unchanged_quotes_database_identifier():
+    connection = Mock()
+    connection.execute_query.return_value = QueryResult(
+        data=[{"MAX_LA": "2026-05-05 12:00:00"}],
+        columns=[{"name": "MAX_LA"}],
+        row_count=1,
+        execution_time=0.0,
+    )
+
+    unchanged = _schema_unchanged(
+        connection,
+        "USER$NCEJDA@G2.COM",
+        "PUBLIC",
+        "2026-05-05 12:00:00",
+    )
+
+    submitted_sql = connection.execute_query.call_args.args[0]
+    assert unchanged is True
+    assert 'FROM "USER$NCEJDA@G2.COM".INFORMATION_SCHEMA.TABLES' in submitted_sql
+    assert "WHERE TABLE_SCHEMA = 'PUBLIC'" in submitted_sql
+
+
+def test_schema_name_literal_escapes_single_quote():
+    assert _quote_string_literal("O'HARE") == "'O''HARE'"

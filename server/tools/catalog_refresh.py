@@ -343,13 +343,16 @@ def _submit_tables_query(
     conn: snowflake.connector.SnowflakeConnection, job: _SchemaJob
 ) -> None:
     """Submit an async TABLES metadata query for a schema."""
+    quoted_db = SnowflakeConnection._quote_identifier(job.database, "database")
+    schema_literal = _quote_string_literal(job.schema)
+
     cursor = conn.cursor(snowflake.connector.DictCursor)
     cursor.execute_async(
         f"""
         SELECT TABLE_CATALOG, TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE,
                ROW_COUNT, BYTES, COMMENT, LAST_ALTERED
-        FROM {job.database}.INFORMATION_SCHEMA.TABLES
-        WHERE TABLE_SCHEMA = '{job.schema}'
+        FROM {quoted_db}.INFORMATION_SCHEMA.TABLES
+        WHERE TABLE_SCHEMA = {schema_literal}
         ORDER BY TABLE_NAME
         """
     )
@@ -361,12 +364,15 @@ def _submit_counts_query(
     conn: snowflake.connector.SnowflakeConnection, job: _SchemaJob
 ) -> None:
     """Submit an async COLUMNS count query for a schema."""
+    quoted_db = SnowflakeConnection._quote_identifier(job.database, "database")
+    schema_literal = _quote_string_literal(job.schema)
+
     cursor = conn.cursor(snowflake.connector.DictCursor)
     cursor.execute_async(
         f"""
         SELECT TABLE_NAME, COUNT(*) as COLUMN_COUNT
-        FROM {job.database}.INFORMATION_SCHEMA.COLUMNS
-        WHERE TABLE_SCHEMA = '{job.schema}'
+        FROM {quoted_db}.INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = {schema_literal}
         GROUP BY TABLE_NAME
         """
     )
@@ -384,6 +390,10 @@ def _compute_max_last_altered(rows: list[dict]) -> str | None:
     return max(values) if values else None
 
 
+def _quote_string_literal(value: str) -> str:
+    return f"'{value.replace("'", "''")}'"
+
+
 def _schema_unchanged(
     connection: SnowflakeConnection,
     database: str,
@@ -392,11 +402,13 @@ def _schema_unchanged(
 ) -> bool:
     """Check if a schema's max LAST_ALTERED matches the cached value."""
     try:
+        quoted_db = SnowflakeConnection._quote_identifier(database, "database")
+        schema_literal = _quote_string_literal(schema)
         result = connection.execute_query(
             f"""
             SELECT MAX(LAST_ALTERED) as MAX_LA
-            FROM {database}.INFORMATION_SCHEMA.TABLES
-            WHERE TABLE_SCHEMA = '{schema}'
+            FROM {quoted_db}.INFORMATION_SCHEMA.TABLES
+            WHERE TABLE_SCHEMA = {schema_literal}
             """
         )
         if result.data and result.data[0].get("MAX_LA"):
