@@ -427,10 +427,7 @@ class TestQuoteIdentifier:
     def test_quotes_identifier_with_at_and_dot(self):
         # Snowflake personal databases (USER$<email>) contain @ and . - issue #47.
         name = "USER$NCEJDA@G2.COM"
-        assert (
-            SnowflakeConnection._quote_identifier(name, "database")
-            == f'"{name}"'
-        )
+        assert SnowflakeConnection._quote_identifier(name, "database") == f'"{name}"'
 
     def test_rejects_empty_name(self):
         with pytest.raises(ValueError, match="empty"):

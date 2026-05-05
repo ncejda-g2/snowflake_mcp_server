@@ -647,9 +647,7 @@ class SnowflakeConnection:
         quoted_db = self._quote_identifier(database, "database")
         quoted_schema = self._quote_identifier(schema, "schema")
 
-        result = self.execute_query(
-            f"SHOW TABLES IN {quoted_db}.{quoted_schema}"
-        )
+        result = self.execute_query(f"SHOW TABLES IN {quoted_db}.{quoted_schema}")
         if result.data:
             return [
                 {
