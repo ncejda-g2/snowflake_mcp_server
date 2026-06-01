@@ -5,6 +5,7 @@ import logging
 from typing import Any
 
 from fastmcp import FastMCP
+from fastmcp.tools.tool import ToolResult
 
 from server.config import Config
 from server.schema_cache import SchemaCache
@@ -273,15 +274,22 @@ async def describe_table_tool(
     - database: Optional database context
     - schema: Optional schema context
 
-    Returns:
-    - All query results (respects LIMIT clause if present in SQL)
-    - Results are cached for CSV export if under 5GB
-    - Use save_last_query_to_csv to export results
+    Returns a compact TEXT payload (not JSON), shaped for efficient parsing:
+    - A `key: value` metadata header (status, rows, cols, execution_time,
+      query_id, csv_export, plus token_limit_warning when relevant).
+    - A `---` separator.
+    - A TSV block: line 1 is the tab-separated column names, each following line
+      is one row. Parse it directly with grep/awk/cut, e.g.
+      `awk -F'\\t' 'NR>1 && $3=="ACTIVE"'`.
+      NULLs render as `\\N`; tabs/newlines inside values are backslash-escaped,
+      so every row stays on exactly one line.
 
-    Note:
+    Notes:
+    - Results are still cached for CSV export if under 5GB (use save_last_query_to_csv).
+    - Respects the LIMIT clause if present in SQL.
     - If you encounter token limit issues with large result sets, consider using
       execute_big_query_to_disk instead, which streams results directly to a file
-      without returning the data in the response, or consider adding a stricter LIMIT clause.
+      without returning the data in the response, or add a stricter LIMIT clause.
 
     Examples:
     - execute_query("SELECT * FROM SALES_DB.PUBLIC.CUSTOMERS LIMIT 10")
@@ -291,18 +299,29 @@ async def describe_table_tool(
 )
 async def execute_query_tool(
     sql: str, database: str | None = None, schema: str | None = None
-) -> dict[str, Any]:
-    """Execute a read-only SQL query."""
+) -> ToolResult:
+    """Execute a read-only SQL query.
+
+    Wraps the text payload in a ToolResult with ONLY content set so FastMCP
+    emits a single TextContent block and never duplicates it as
+    structuredContent. This is version-safe across FastMCP 2.x and 3.x (which
+    disagree on how `output_schema` disables structured output), because a
+    ToolResult is passed through untouched by both.
+    """
     try:
         initialize_resources()
     except Exception as e:
-        return {"status": "error", "message": f"Failed to initialize: {str(e)}"}
+        text = query_executor.build_text_response(
+            status="error", fields={"message": f"Failed to initialize: {str(e)}"}
+        )
+        return ToolResult(content=text)
 
     if connection is None or cache is None:
         raise RuntimeError("Connection or cache initialization failed")
-    return await query_executor.execute_query(
+    text = await query_executor.execute_query(
         connection, cache, sql=sql, database=database, schema=schema
     )
+    return ToolResult(content=text)
 
 
 # Tool: Validate Query Without Execution

@@ -35,18 +35,120 @@ def _format_value(value: Any) -> Any:
         return value
 
 
+# Sentinel rendered for SQL NULL in TSV output. Distinguishable from the empty
+# string (an actual zero-length value), which renders as a literal empty field.
+TSV_NULL = "\\N"
+
+
+def _column_names(columns: Any, sample_row: Any = None) -> list[str]:
+    """Extract ordered column names from result.columns.
+
+    result.columns is normally a list of {"name", "type", "nullable"} dicts
+    (see SnowflakeConnection.execute_query). Some callers/tests pass a plain
+    list of name strings. Fall back to the keys of a sample row dict.
+    """
+    if columns:
+        first = columns[0]
+        if isinstance(first, dict):
+            return [str(c.get("name", "")) for c in columns]
+        return [str(c) for c in columns]
+    if isinstance(sample_row, dict):
+        return list(sample_row.keys())
+    return []
+
+
+def _tsv_escape(value: Any) -> str:
+    """Render a single cell value as a TSV-safe field.
+
+    Guarantees exactly one logical line per row and clean tab-delimited fields
+    so the LLM can rely on awk -F'\\t' / cut -f / grep. Tabs, newlines, carriage
+    returns and backslashes are escaped reversibly. SQL NULL becomes TSV_NULL so
+    it is distinguishable from an empty string.
+    """
+    if value is None:
+        return TSV_NULL
+    if not isinstance(value, str):
+        value = str(value)
+    # Backslash first so we don't double-escape the escapes we add next.
+    return (
+        value.replace("\\", "\\\\")
+        .replace("\t", "\\t")
+        .replace("\r", "\\r")
+        .replace("\n", "\\n")
+    )
+
+
+def _build_tsv(rows: list[dict], column_names: list[str]) -> str:
+    """Build a TSV block: header line of column names + one line per row.
+
+    Values are pulled positionally by column name so the field order matches the
+    header exactly. Designed for direct piping into grep/awk/cut by the agent.
+    """
+    lines = ["\t".join(_tsv_escape(name) for name in column_names)]
+    for row in rows:
+        lines.append(
+            "\t".join(
+                _tsv_escape(_format_value(row.get(name))) for name in column_names
+            )
+        )
+    return "\n".join(lines)
+
+
+def build_text_response(
+    status: str,
+    fields: dict[str, Any],
+    tsv: str | None = None,
+) -> str:
+    """Assemble the final text payload returned to the agent.
+
+    Format::
+
+        status: success
+        rows: 50
+        cols: 92
+        ...
+        ---
+        <TSV header line>
+        <TSV data lines...>
+
+    The header is a flat, one-per-line ``key: value`` block (trivially greppable
+    and human-skimmable). When ``tsv`` is provided it follows a ``---`` separator.
+    Multi-line field values (e.g. a warning) are kept on their key's line by
+    collapsing internal newlines, preserving the one-record-per-line guarantee.
+    """
+    header_lines = [f"status: {status}"]
+    for key, value in fields.items():
+        if value is None:
+            continue
+        text = str(value).replace("\n", " ").strip()
+        header_lines.append(f"{key}: {text}")
+
+    if tsv is None:
+        return "\n".join(header_lines)
+    return "\n".join(header_lines) + "\n---\n" + tsv
+
+
 async def execute_query(
     connection: SnowflakeConnection,
     cache: SchemaCache,
     sql: str,
     database: str | None = None,
     schema: str | None = None,
-) -> dict[str, Any]:
+) -> str:
     """
     Execute a read-only SQL query with safety checks.
 
     This tool validates queries for read-only operations, executes them,
-    and returns all results with metadata.
+    and returns all results as a compact, line-oriented text payload.
+
+    The response is a small ``key: value`` metadata header followed by a
+    ``---`` separator and a TSV block (header line of column names + one line
+    per row). Returning text (rather than a dict) both compresses the payload
+    and suppresses FastMCP's duplicate ``structuredContent`` serialization.
+
+    The TSV block is designed to be parsed directly with grep/awk/cut, e.g.
+    ``awk -F'\\t' 'NR>1 && $3=="X"'``. NULLs render as ``\\N``; tabs/newlines in
+    values are backslash-escaped so each row stays on exactly one line.
 
     Args:
         connection: Active Snowflake connection
@@ -56,24 +158,29 @@ async def execute_query(
         schema: Optional schema context
 
     Returns:
-        Dictionary with query results and metadata
+        A text payload: metadata header + ``---`` + TSV result block.
     """
     # First validate the query for safety (before checking cache)
     validator = QueryValidator()
     is_valid, error_msg, query_type = validator.validate(sql)
     if not is_valid:
-        return {"status": "error", "message": error_msg, "query_type": str(query_type)}
+        return build_text_response(
+            status="error",
+            fields={"message": error_msg, "query_type": str(query_type)},
+        )
 
     # Check cache and auto-refresh if needed
     if cache.is_expired() or cache.is_empty():
         logger.info("Cache is expired or empty, refreshing catalog...")
         refresh_result = await refresh_catalog(connection, cache, force=True)
         if refresh_result["status"] != "success":
-            return {
-                "status": "error",
-                "message": "Failed to refresh catalog",
-                "error": refresh_result.get("message"),
-            }
+            return build_text_response(
+                status="error",
+                fields={
+                    "message": "Failed to refresh catalog",
+                    "error": refresh_result.get("message"),
+                },
+            )
 
     try:
         # Execute query
@@ -84,13 +191,15 @@ async def execute_query(
             global last_query_cache
             last_query_cache = None
 
-            return {
-                "status": "success",
-                "data": [],
-                "columns": result.columns,
-                "message": "Query executed successfully but returned no results",
-                "execution_time": result.execution_time,
-            }
+            return build_text_response(
+                status="success",
+                fields={
+                    "rows": 0,
+                    "execution_time": round(result.execution_time, 4),
+                    "message": "Query executed successfully but returned no results",
+                },
+                tsv=_build_tsv([], _column_names(result.columns)),
+            )
 
         # Check if results exceed cache size limit for CSV export
         cache_data = {
@@ -139,15 +248,15 @@ async def execute_query(
                 "Results cached and ready for CSV export using save_last_query_to_csv"
             )
 
-        # Format results for JSON
-        formatted_data = []
-        for row in result.data:
-            formatted_row = {k: _format_value(v) for k, v in row.items()}
-            formatted_data.append(formatted_row)
+        # Serialize the row data as TSV (header line + one line per row).
+        # TSV is the payload the agent parses with grep/awk/cut, and is far more
+        # token-efficient than the previous array-of-dicts (no per-row key repeat).
+        column_names = _column_names(result.columns, result.data[0])
+        tsv = _build_tsv(result.data, column_names)
 
-        # Check if response might exceed MCP token limits
-        # We check the formatted data size since that's what gets serialized
-        response_size_estimate = _estimate_size(formatted_data)
+        # Check if response might exceed MCP token limits. We measure the TSV
+        # block since that is the bulk of what actually gets serialized now.
+        response_size_estimate = len(tsv)
 
         # Add warning if approaching estimated token limits (at 80% threshold)
         token_warning = None
@@ -161,41 +270,34 @@ async def execute_query(
                 f"Query response approaching token limits: {response_size_estimate:,} chars"
             )
 
-        response = {
-            "status": "success",
-            "data": formatted_data,
-            "columns": result.columns,
-            "row_count": len(result.data),
-            "execution_time": result.execution_time,
-            "message": f"Query executed successfully, returned {len(result.data)} rows",
-            "csv_export": {"available": csv_available, "message": csv_message},
-            "query_metadata": {
-                "database_context": database,
-                "schema_context": schema,
-                "query_id": result.query_id,
-            },
+        fields: dict[str, Any] = {
+            "rows": len(result.data),
+            "cols": len(column_names),
+            "execution_time": round(result.execution_time, 4),
+            "query_id": result.query_id,
+            "csv_export": "available" if csv_available else "unavailable",
+            "csv_message": csv_message,
         }
-
-        # Add token warning if present
         if token_warning:
-            response["token_limit_warning"] = token_warning
+            fields["token_limit_warning"] = token_warning
 
-        return response
+        return build_text_response(status="success", fields=fields, tsv=tsv)
 
     except ValueError as e:
         # Query validation errors
-        return {
-            "status": "error",
-            "message": str(e),
-            "error_type": "validation_error",
-        }
+        return build_text_response(
+            status="error",
+            fields={"error_type": "validation_error", "message": str(e)},
+        )
     except Exception as e:
         logger.error(f"Query execution failed: {str(e)}")
-        return {
-            "status": "error",
-            "message": f"Query execution failed: {str(e)}",
-            "error_type": "execution_error",
-        }
+        return build_text_response(
+            status="error",
+            fields={
+                "error_type": "execution_error",
+                "message": f"Query execution failed: {str(e)}",
+            },
+        )
 
 
 async def validate_query_without_execution(

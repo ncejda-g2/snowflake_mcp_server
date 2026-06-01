@@ -19,6 +19,35 @@ from server.tools.query_executor import (
 )
 
 
+def parse_text_response(text: str) -> dict:
+    """Parse the execute_query text payload into a dict for assertions.
+
+    The payload is a ``key: value`` header, an optional ``---`` separator, then
+    a TSV block (header line + row lines). Returns a dict with the header keys
+    plus ``columns`` (list of names) and ``rows`` (list of lists of str cells).
+    """
+    assert isinstance(text, str)
+    header_part, sep, tsv_part = text.partition("\n---\n")
+    parsed: dict = {}
+    for line in header_part.splitlines():
+        if not line.strip():
+            continue
+        key, _, value = line.partition(": ")
+        parsed[key] = value
+
+    columns: list[str] = []
+    data_rows: list[list[str]] = []
+    if sep:
+        tsv_lines = tsv_part.split("\n")
+        if tsv_lines:
+            columns = tsv_lines[0].split("\t") if tsv_lines[0] else []
+            for line in tsv_lines[1:]:
+                data_rows.append(line.split("\t"))
+    parsed["columns"] = columns
+    parsed["data_rows"] = data_rows
+    return parsed
+
+
 class TestHelperFunctions:
     """Test helper functions."""
 
@@ -116,9 +145,10 @@ class TestExecuteQuery:
         ):
             result = await execute_query(mock_connection, mock_cache, "DROP TABLE test")
 
-            assert result["status"] == "error"
-            assert "Invalid query" in result["message"]
-            assert result["query_type"] == "QueryType.UNKNOWN"
+            parsed = parse_text_response(result)
+            assert parsed["status"] == "error"
+            assert "Invalid query" in parsed["message"]
+            assert parsed["query_type"] == "QueryType.UNKNOWN"
 
     @pytest.mark.asyncio
     async def test_execute_query_empty_cache(
@@ -148,7 +178,7 @@ class TestExecuteQuery:
                 mock_connection, mock_cache, force=True
             )
             # Verify query succeeded after refresh
-            assert result["status"] == "success"
+            assert parse_text_response(result)["status"] == "success"
 
     @pytest.mark.asyncio
     async def test_execute_query_empty_cache_refresh_fails(
@@ -176,9 +206,10 @@ class TestExecuteQuery:
             )
 
             # Verify error is returned when refresh fails
-            assert result["status"] == "error"
-            assert "Failed to refresh catalog" in result["message"]
-            assert result["error"] == "Connection failed"
+            parsed = parse_text_response(result)
+            assert parsed["status"] == "error"
+            assert "Failed to refresh catalog" in parsed["message"]
+            assert parsed["error"] == "Connection failed"
 
     @pytest.mark.asyncio
     async def test_execute_query_success(
@@ -198,13 +229,16 @@ class TestExecuteQuery:
                 schema="schema1",
             )
 
-            assert result["status"] == "success"
-            assert len(result["data"]) == 2
-            assert result["row_count"] == 2
-            assert result["columns"] == ["id", "name"]
-            assert result["execution_time"] == 0.123
-            assert result["csv_export"]["available"] is True
-            assert result["query_metadata"]["query_id"] == "test-query-id-123"
+            parsed = parse_text_response(result)
+            assert parsed["status"] == "success"
+            assert parsed["rows"] == "2"
+            assert len(parsed["data_rows"]) == 2
+            assert parsed["columns"] == ["id", "name"]
+            assert parsed["execution_time"] == "0.123"
+            assert parsed["csv_export"] == "available"
+            assert parsed["query_id"] == "test-query-id-123"
+            # Row data is positional and matches the header order.
+            assert parsed["data_rows"] == [["1", "Alice"], ["2", "Bob"]]
 
     @pytest.mark.asyncio
     async def test_execute_query_no_results(self, mock_connection, mock_cache):
@@ -222,9 +256,10 @@ class TestExecuteQuery:
                 mock_connection, mock_cache, "SELECT * FROM test WHERE 1=0"
             )
 
-            assert result["status"] == "success"
-            assert result["data"] == []
-            assert "no results" in result["message"].lower()
+            parsed = parse_text_response(result)
+            assert parsed["status"] == "success"
+            assert parsed["data_rows"] == []
+            assert "no results" in parsed["message"].lower()
             assert get_last_query_cache() is None
 
     @pytest.mark.asyncio
@@ -256,7 +291,7 @@ class TestExecuteQuery:
                 mock_connection, mock_cache, force=True
             )
             # Verify query succeeded after refresh
-            assert result["status"] == "success"
+            assert parse_text_response(result)["status"] == "success"
 
     @pytest.mark.asyncio
     async def test_execute_query_large_cache_exceeded(
@@ -285,9 +320,10 @@ class TestExecuteQuery:
                 mock_connection, mock_cache, "SELECT * FROM large_table"
             )
 
-            assert result["status"] == "success"
-            assert result["csv_export"]["available"] is False
-            assert "too large for CSV export" in result["csv_export"]["message"]
+            parsed = parse_text_response(result)
+            assert parsed["status"] == "success"
+            assert parsed["csv_export"] == "unavailable"
+            assert "too large for CSV export" in parsed["csv_message"]
 
             # Check cache only contains metadata
             cache = get_last_query_cache()
@@ -298,9 +334,11 @@ class TestExecuteQuery:
     @pytest.mark.asyncio
     async def test_execute_query_token_warning(self, mock_connection, mock_cache):
         """Test query with results approaching token limits."""
-        # Create medium-large result set that triggers token warning
-        data_size = MCP_CHAR_WARNING_THRESHOLD + 1000
-        medium_data = [{"id": i, "data": "x" * 100} for i in range(data_size // 120)]
+        # Create a result set whose TSV size exceeds the warning threshold.
+        # Each row contributes ~210 chars of TSV, so size generously past it.
+        cell_len = 200
+        num_rows = (MCP_CHAR_WARNING_THRESHOLD // cell_len) + 50
+        medium_data = [{"id": i, "data": "x" * cell_len} for i in range(num_rows)]
         mock_result = Mock()
         mock_result.data = medium_data
         mock_result.columns = ["id", "data"]
@@ -315,10 +353,11 @@ class TestExecuteQuery:
                 mock_connection, mock_cache, "SELECT * FROM medium_table"
             )
 
-            assert result["status"] == "success"
-            assert "token_limit_warning" in result
+            parsed = parse_text_response(result)
+            assert parsed["status"] == "success"
+            assert "token_limit_warning" in parsed
             assert (
-                "approaching typical MCP token limits" in result["token_limit_warning"]
+                "approaching typical MCP token limits" in parsed["token_limit_warning"]
             )
 
     @pytest.mark.asyncio
@@ -345,12 +384,14 @@ class TestExecuteQuery:
                 mock_connection, mock_cache, "SELECT * FROM test"
             )
 
-            assert result["status"] == "success"
-            row = result["data"][0]
-            assert "2024-01-01" in row["dt"]
-            assert row["binary"] == "test"
-            assert row["null"] is None
-            assert row["regular"] == "value"
+            parsed = parse_text_response(result)
+            assert parsed["status"] == "success"
+            assert parsed["columns"] == ["dt", "binary", "null", "regular"]
+            cells = dict(zip(parsed["columns"], parsed["data_rows"][0], strict=False))
+            assert "2024-01-01" in cells["dt"]
+            assert cells["binary"] == "test"
+            assert cells["null"] == "\\N"  # SQL NULL sentinel
+            assert cells["regular"] == "value"
 
     @pytest.mark.asyncio
     async def test_execute_query_value_error(self, mock_connection, mock_cache):
@@ -364,9 +405,10 @@ class TestExecuteQuery:
                 mock_connection, mock_cache, "SELECT * FROM test"
             )
 
-            assert result["status"] == "error"
-            assert "Invalid parameter" in result["message"]
-            assert result["error_type"] == "validation_error"
+            parsed = parse_text_response(result)
+            assert parsed["status"] == "error"
+            assert "Invalid parameter" in parsed["message"]
+            assert parsed["error_type"] == "validation_error"
 
     @pytest.mark.asyncio
     async def test_execute_query_general_exception(self, mock_connection, mock_cache):
@@ -385,9 +427,10 @@ class TestExecuteQuery:
                 mock_connection, mock_cache, "SELECT * FROM test"
             )
 
-            assert result["status"] == "error"
-            assert "Database connection failed" in result["message"]
-            assert result["error_type"] == "execution_error"
+            parsed = parse_text_response(result)
+            assert parsed["status"] == "error"
+            assert "Database connection failed" in parsed["message"]
+            assert parsed["error_type"] == "execution_error"
             mock_logger.error.assert_called_once()
 
     @pytest.mark.asyncio
@@ -410,10 +453,12 @@ class TestExecuteQuery:
         ):
             result = await execute_query(mock_connection, mock_cache, long_sql)
 
-            assert result["status"] == "success"
-            # SQL should not be in metadata (agent already has it in context)
-            assert "sql" not in result["query_metadata"]
-            assert result["query_metadata"]["query_id"] == "long-sql-id"
+            parsed = parse_text_response(result)
+            assert parsed["status"] == "success"
+            # SQL should not be echoed back (agent already has it in context).
+            assert long_sql not in result
+            assert "sql:" not in result
+            assert parsed["query_id"] == "long-sql-id"
 
 
 class TestValidateQueryWithoutExecution:
