@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Snowflake MCP Server - Main application."""
 
+import json
 import logging
 from typing import Any
 
@@ -28,6 +29,21 @@ mcp = FastMCP("Snowflake Read-Only MCP")
 # Global instances (initialized on startup)
 connection: SnowflakeConnection | None = None
 cache: SchemaCache | None = None
+
+
+def _json_result(payload: dict[str, Any]) -> ToolResult:
+    """Return a dict payload as a single JSON TextContent block.
+
+    FastMCP, given a plain dict, emits the data TWICE: once as a JSON text
+    block and again as a ``structuredContent`` object. For an LLM client both
+    arrive as text, so the structured copy is pure token waste. Serializing the
+    dict ourselves and wrapping it in ``ToolResult(content=...)`` makes FastMCP
+    emit exactly one ``TextContent`` and leave ``structured_content`` unset --
+    the same single-payload contract ``execute_query`` already follows. The
+    agent still receives the full JSON and can read any field (e.g.
+    ``file_path``) straight out of it.
+    """
+    return ToolResult(content=json.dumps(payload, default=str))
 
 
 # Initialize resources on first use
@@ -84,13 +100,15 @@ def initialize_resources(require_connection: bool = True):
 )
 async def refresh_catalog_tool(
     force: bool = False, resume: bool = True
-) -> dict[str, Any]:
+) -> ToolResult:
     """Refresh the schema catalog cache."""
     try:
         # First, initialize only the cache to check if refresh is needed
         initialize_resources(require_connection=False)
     except Exception as e:
-        return {"status": "error", "message": f"Failed to initialize cache: {str(e)}"}
+        return _json_result(
+            {"status": "error", "message": f"Failed to initialize cache: {str(e)}"}
+        )
 
     if cache is None:
         raise RuntimeError("Cache initialization failed")
@@ -98,26 +116,32 @@ async def refresh_catalog_tool(
     # Check if cache is valid before connecting to Snowflake
     if not force and not cache.is_expired() and not cache.is_empty():
         stats = cache.get_statistics()
-        return {
-            "status": "cache_valid",
-            "message": "Cache is still valid and not expired",
-            "statistics": stats,
-        }
+        return _json_result(
+            {
+                "status": "cache_valid",
+                "message": "Cache is still valid and not expired",
+                "statistics": stats,
+            }
+        )
 
     # Only connect to Snowflake if we actually need to refresh
     try:
         initialize_resources(require_connection=True)
     except Exception as e:
-        return {
-            "status": "error",
-            "message": f"Failed to connect to Snowflake: {str(e)}",
-        }
+        return _json_result(
+            {
+                "status": "error",
+                "message": f"Failed to connect to Snowflake: {str(e)}",
+            }
+        )
 
     if connection is None:
         raise RuntimeError("Connection initialization failed")
 
-    return await catalog_refresh.refresh_catalog(
-        connection, cache, force=force, resume=resume
+    return _json_result(
+        await catalog_refresh.refresh_catalog(
+            connection, cache, force=force, resume=resume
+        )
     )
 
 
@@ -152,21 +176,25 @@ async def show_tables_tool(
     database_pattern: str | None = None,
     schema_pattern: str | None = None,
     table_pattern: str | None = None,
-) -> dict[str, Any]:
+) -> ToolResult:
     """Browse databases, schemas, and tables hierarchically with pattern filtering."""
     try:
         initialize_resources()
     except Exception as e:
-        return {"status": "error", "message": f"Failed to initialize: {str(e)}"}
+        return _json_result(
+            {"status": "error", "message": f"Failed to initialize: {str(e)}"}
+        )
 
     if connection is None or cache is None:
         raise RuntimeError("Connection or cache initialization failed")
-    return await schema_inspector.show_tables(
-        connection,
-        cache,
-        database_pattern=database_pattern,
-        schema_pattern=schema_pattern,
-        table_pattern=table_pattern,
+    return _json_result(
+        await schema_inspector.show_tables(
+            connection,
+            cache,
+            database_pattern=database_pattern,
+            schema_pattern=schema_pattern,
+            table_pattern=table_pattern,
+        )
     )
 
 
@@ -195,16 +223,20 @@ async def show_tables_tool(
     - find_tables("staging") - Find tables with "staging" in name or comment
     """,
 )
-async def find_tables_tool(search_term: str) -> dict[str, Any]:
+async def find_tables_tool(search_term: str) -> ToolResult:
     """Search for tables by keyword in names and comments across all databases."""
     try:
         initialize_resources()
     except Exception as e:
-        return {"status": "error", "message": f"Failed to initialize: {str(e)}"}
+        return _json_result(
+            {"status": "error", "message": f"Failed to initialize: {str(e)}"}
+        )
 
     if connection is None or cache is None:
         raise RuntimeError("Connection or cache initialization failed")
-    return await schema_inspector.find_tables(connection, cache, search_term)
+    return _json_result(
+        await schema_inspector.find_tables(connection, cache, search_term)
+    )
 
 
 # Tool: Describe Table
@@ -239,21 +271,25 @@ async def describe_table_tool(
     database: str,
     schema: str,
     table: str,
-) -> dict[str, Any]:
+) -> ToolResult:
     """Get detailed column information for a specific table."""
     try:
         initialize_resources()
     except Exception as e:
-        return {"status": "error", "message": f"Failed to initialize: {str(e)}"}
+        return _json_result(
+            {"status": "error", "message": f"Failed to initialize: {str(e)}"}
+        )
 
     if cache is None:
         raise RuntimeError("Cache initialization failed")
-    return await table_inspector.describe_table(
-        cache,
-        connection=connection,
-        database=database,
-        schema=schema,
-        table=table,
+    return _json_result(
+        await table_inspector.describe_table(
+            cache,
+            connection=connection,
+            database=database,
+            schema=schema,
+            table=table,
+        )
     )
 
 
@@ -286,10 +322,13 @@ async def describe_table_tool(
     Auto-spill for large results:
     - If the full TSV is too large to return inline, the tool does NOT truncate
       silently or dump a wall of text. It writes the COMPLETE result to a temp
-      `.tsv` file (identical format) and returns a one-row proof-of-shape
-      preview plus a `results_file: /path` field. Read/grep/awk that file for
-      all rows. A `column_index` map (1=NAME 2=...) is included so you can target
-      columns by name without counting.
+      `.tsv` file (identical format, with a header line) and returns a one-row
+      proof-of-shape preview plus a `results_file: /path` field. Read/grep/awk
+      that file for all rows.
+    - The preview is DATA ONLY (no header line). The column names + their 1-based
+      positions come from the `column_index` map (1=NAME 2=...), which is the
+      single column reference for both the preview and the file -- target columns
+      by name via the map (e.g. `63=TYPE` -> awk `$63`) without counting.
     - The preview is one row only; `rows:` still reports the true total.
 
     Notes:
@@ -366,17 +405,21 @@ async def execute_query_tool(
 )
 async def validate_query_without_execution_tool(
     sql: str, database: str | None = None, schema: str | None = None
-) -> dict[str, Any]:
+) -> ToolResult:
     """Generate and prepare a SQL query (read or write) without executing it."""
     try:
         initialize_resources()
     except Exception as e:
-        return {"status": "error", "message": f"Failed to initialize: {str(e)}"}
+        return _json_result(
+            {"status": "error", "message": f"Failed to initialize: {str(e)}"}
+        )
 
     if connection is None or cache is None:
         raise RuntimeError("Connection or cache initialization failed")
-    return await query_executor.validate_query_without_execution(
-        connection, cache, sql=sql, database=database, schema=schema
+    return _json_result(
+        await query_executor.validate_query_without_execution(
+            connection, cache, sql=sql, database=database, schema=schema
+        )
     )
 
 
@@ -399,17 +442,21 @@ async def validate_query_without_execution_tool(
 )
 async def get_query_history_tool(
     limit: int = 10, only_successful: bool = True
-) -> dict[str, Any]:
+) -> ToolResult:
     """Get query execution history."""
     try:
         initialize_resources()
     except Exception as e:
-        return {"status": "error", "message": f"Failed to initialize: {str(e)}"}
+        return _json_result(
+            {"status": "error", "message": f"Failed to initialize: {str(e)}"}
+        )
 
     if connection is None:
         raise RuntimeError("Connection initialization failed")
-    return await query_executor.get_query_history(
-        connection, limit=limit, only_successful=only_successful
+    return _json_result(
+        await query_executor.get_query_history(
+            connection, limit=limit, only_successful=only_successful
+        )
     )
 
 
@@ -463,23 +510,27 @@ async def execute_query_to_file_tool(
     database: str | None = None,
     schema: str | None = None,
     timeout_seconds: int = 300,
-) -> dict[str, Any]:
+) -> ToolResult:
     """Execute a query and stream results to a file at a chosen path."""
     try:
         initialize_resources()
     except Exception as e:
-        return {"status": "error", "message": f"Failed to initialize: {str(e)}"}
+        return _json_result(
+            {"status": "error", "message": f"Failed to initialize: {str(e)}"}
+        )
 
     if connection is None or cache is None:
         raise RuntimeError("Connection or cache initialization failed")
-    return await execute_query_to_file.execute_query_to_file(
-        connection,
-        cache,
-        sql=sql,
-        file_path=file_path,
-        database=database,
-        schema=schema,
-        timeout_seconds=timeout_seconds,
+    return _json_result(
+        await execute_query_to_file.execute_query_to_file(
+            connection,
+            cache,
+            sql=sql,
+            file_path=file_path,
+            database=database,
+            schema=schema,
+            timeout_seconds=timeout_seconds,
+        )
     )
 
 

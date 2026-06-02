@@ -123,6 +123,19 @@ def build_tsv(rows: list[dict], names: list[str]) -> str:
     return "\n".join(lines)
 
 
+def build_tsv_rows(rows: list[dict], names: list[str]) -> str:
+    """Build a header-less TSV block: one line per row, no column-name line.
+
+    Used for the auto-spill preview, where the column names are already carried
+    (with positions) by the ``column_index`` map. Emitting a header line there
+    too would duplicate every column name in the inline payload for no benefit:
+    the agent resolves names via the map and reads the real data from the file.
+    The preview's job is only to show value formatting/shape, so it is pure
+    data lines.
+    """
+    return "\n".join(tsv_row_line(row, names) for row in rows)
+
+
 def write_tsv_file(file_path: str, rows: list[dict], names: list[str]) -> int:
     """Write rows to ``file_path`` as TSV (header + one line per row).
 

@@ -11,6 +11,7 @@ from server.serialization import (
     TSV_EXTENSION,
     TSV_NULL,
     build_tsv,
+    build_tsv_rows,
     column_index_map,
     column_names,
     format_value,
@@ -57,6 +58,28 @@ def test_build_tsv_header_and_rows_positional():
     assert lines[0] == "id\tname"
     assert lines[1] == "1\tAlice"
     assert lines[2] == f"2\t{TSV_NULL}"  # NULL sentinel on disk == inline
+
+
+def test_build_tsv_rows_has_no_header_line():
+    """The header-less variant emits data lines only (for the spill preview).
+
+    Column names are carried by the column_index map in that path, so the
+    preview must NOT repeat them as a TSV header line.
+    """
+    rows = [{"id": 1, "name": "Alice"}, {"id": 2, "name": None}]
+    names = ["id", "name"]
+    block = build_tsv_rows(rows, names)
+    lines = block.split("\n")
+    # No header line: first line is already a data row.
+    assert lines[0] == "1\tAlice"
+    assert lines[1] == f"2\t{TSV_NULL}"
+    assert len(lines) == len(rows)
+    # And it is exactly build_tsv minus its first (header) line.
+    assert block == "\n".join(build_tsv(rows, names).split("\n")[1:])
+
+
+def test_build_tsv_rows_empty():
+    assert build_tsv_rows([], ["id", "name"]) == ""
 
 
 def test_column_index_map_is_1_based_and_matches_awk():

@@ -301,7 +301,15 @@ class TestExecuteQuery:
                 mock_connection, mock_cache, "SELECT * FROM medium_table"
             )
 
-            parsed = parse_text_response(result)
+            # Header-part fields are still a clean key:value block.
+            header_part, _, tsv_part = result.partition("\n---\n")
+            parsed: dict = {}
+            for line in header_part.splitlines():
+                if not line.strip():
+                    continue
+                key, _, value = line.partition(": ")
+                parsed[key] = value
+
             assert parsed["status"] == "success"
             # True total row count is still reported.
             assert parsed["rows"] == str(num_rows)
@@ -310,12 +318,20 @@ class TestExecuteQuery:
             spill_path = parsed["results_file"]
             assert spill_path.endswith(".tsv")
             assert os.path.exists(spill_path)
-            # Inline payload is only the preview (header + N rows), not the full set.
-            assert len(parsed["data_rows"]) <= query_executor.SPILL_PREVIEW_ROWS
-            # A 1-based column index map is emitted so the agent never has to
-            # count columns by eye to write awk/cut against the spilled file.
+            # The inline preview is DATA ONLY (no header line): the column names
+            # live in the column_index map, so re-emitting them as a TSV header
+            # would duplicate every name for no benefit. Every preview line must
+            # therefore be a real data row, not the header.
+            preview_lines = tsv_part.split("\n") if tsv_part else []
+            assert 0 < len(preview_lines) <= query_executor.SPILL_PREVIEW_ROWS
+            # First preview line is a data row, not the column-name header.
+            assert preview_lines[0].split("\t") != ["id", "data"]
+            # The first preview row matches the first data row positionally.
+            assert preview_lines[0].split("\t") == ["0", "x" * cell_len]
+            # The 1-based column index map is the SOLE column reference inline,
+            # so the agent never has to count columns by eye to write awk/cut.
             assert parsed["column_index"] == "1=id 2=data"
-            # The full file contains every row plus the header line.
+            # The on-disk file still carries its own header line + every row.
             with open(spill_path, encoding="utf-8") as f:
                 file_lines = f.read().splitlines()
             assert len(file_lines) == num_rows + 1  # header + all rows

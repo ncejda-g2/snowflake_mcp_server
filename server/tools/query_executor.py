@@ -16,6 +16,7 @@ from server.schema_cache import SchemaCache
 from server.serialization import (
     TSV_NULL,
     build_tsv,
+    build_tsv_rows,
     column_index_map,
     write_tsv_file,
 )
@@ -117,13 +118,16 @@ async def execute_query(
 
     Auto-spill: when the full TSV would exceed the inline size threshold, the
     tool does NOT dump a wall of text or silently truncate. It writes the
-    *complete* result to a temp ``.tsv`` file (identical format) and returns a
-    one-row proof-of-shape preview plus ``results_file: /path``. The preview is
-    deliberately a single row: for a spilled result the preview is never the
-    answer, so it only needs to show column names and value formatting so the
-    agent can write a correct grep/awk against the file. The agent reads/greps
-    that file for the full data. NULL/empty semantics are identical on disk and
-    inline.
+    *complete* result to a temp ``.tsv`` file (identical format, including a
+    header line) and returns a one-row proof-of-shape preview plus
+    ``results_file: /path`` and a ``column_index`` map. The preview is
+    deliberately a single row and is DATA ONLY (no header line): for a spilled
+    result the preview is never the answer, and the column names already live
+    -- with their positions -- in the ``column_index`` map, so repeating them as
+    a TSV header would just duplicate every name in the payload. The map is the
+    single column reference for both the preview and the file. The agent
+    reads/greps the file for the full data. NULL/empty semantics are identical
+    on disk and inline.
 
     Args:
         connection: Active Snowflake connection
@@ -195,24 +199,32 @@ async def execute_query(
         if len(tsv) > MCP_CHAR_WARNING_THRESHOLD:
             spill_path, written = _spill_to_disk(result.data, column_names)
             preview_count = min(SPILL_PREVIEW_ROWS, written)
-            preview_tsv = _build_tsv(
+            # Header-less preview: the column names live (with positions) in the
+            # column_index map, so re-emitting them as a TSV header line here
+            # would duplicate every name in the payload for no benefit. The
+            # preview is data-only -- just enough to show value formatting/shape.
+            preview_tsv = build_tsv_rows(
                 result.data[:SPILL_PREVIEW_ROWS], column_names
             )
             row_word = "row" if preview_count == 1 else "rows"
             fields["results_file"] = spill_path
             fields["preview_rows"] = preview_count
-            # 1-based name->position map so the agent never has to count columns
-            # by eye to write awk/cut (the most error-prone step on wide results).
-            # Spill-only: small/mid inline results are narrow enough to eyeball.
+            # 1-based name->position map. This is the SOLE column reference for a
+            # spilled result (the preview is header-less): it both names the
+            # columns and gives the awk/cut index, so the agent never has to
+            # count columns by eye -- the most error-prone step on wide results.
+            # The on-disk file still carries its own TSV header line.
             fields["column_index"] = column_index_map(column_names)
             fields["results_truncated_inline"] = (
                 f"Full result ({written:,} rows, {len(tsv):,} chars) exceeds the inline "
                 f"limit and was written to {spill_path}. The preview below is a "
-                f"proof-of-shape sample ({preview_count} {row_word}), not the answer: "
-                f"read/grep/awk the file for all rows "
-                f"(same TSV format: \\t-delimited, NULL = \\N, one row per line). "
-                f"To target a column by name, use the 1-based column_index map above "
-                f'(e.g. 63=TYPE means awk -F\'\\t\' \'$63=="..."\'); do not count '
+                f"proof-of-shape sample ({preview_count} {row_word}) of DATA ONLY "
+                f"(no header line): read/grep/awk the file for all rows "
+                f"(TSV format: \\t-delimited, NULL = \\N, one row per line; the file "
+                f"includes a header line). Column names + positions are in the "
+                f"column_index map above -- it is the column reference for both the "
+                f"preview and the file. To target a column by name use that 1-based "
+                f'map (e.g. 63=TYPE means awk -F\'\\t\' \'$63=="..."\'); do not count '
                 f"columns by eye."
             )
             logger.warning(
