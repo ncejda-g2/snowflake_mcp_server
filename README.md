@@ -451,9 +451,8 @@ The server provides powerful tools for interacting with Snowflake:
 | `show_tables` | Browse database hierarchy with pattern filters (like SHOW TABLES) |
 | `find_tables` | Search for tables by keyword across all databases |
 | `describe_table` | View detailed column information (like DESCRIBE TABLE) |
-| `execute_query` | Run read-only SQL queries |
-| `execute_big_query_to_disk` | Stream large results to CSV |
-| `save_last_query_to_csv` | Export query results |
+| `execute_query` | Run read-only SQL queries (inline, or auto-spill large results to a temp file) |
+| `execute_query_to_file` | Execute a query and write its results to a TSV file at a chosen path (any size) |
 
 ## 📚 Documentation
 

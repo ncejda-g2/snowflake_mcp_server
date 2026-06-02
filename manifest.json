@@ -97,12 +97,8 @@
       "description": "Get the history of executed queries in this session"
     },
     {
-      "name": "save_last_query_to_csv",
-      "description": "Save the last query results to a CSV file"
-    },
-    {
-      "name": "execute_big_query_to_disk",
-      "description": "Execute a large query and save results directly to CSV"
+      "name": "execute_query_to_file",
+      "description": "Execute a query and write its results to a TSV file at a chosen path"
     }
   ],
   "compatibility": {

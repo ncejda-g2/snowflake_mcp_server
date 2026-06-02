@@ -59,6 +59,7 @@ test-results.xml
 .ruff_cache/
 .mypy_cache/
 .cache/
+node-compile-cache/
 
 # LLM
 .claude/

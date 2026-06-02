@@ -12,9 +12,8 @@ from server.schema_cache import SchemaCache
 from server.snowflake_connection import SnowflakeConnection
 from server.tools import (
     catalog_refresh,
-    execute_big_query_to_disk,
+    execute_query_to_file,
     query_executor,
-    save_to_csv,
     schema_inspector,
     table_inspector,
 )
@@ -276,7 +275,7 @@ async def describe_table_tool(
 
     Returns a compact TEXT payload (not JSON), shaped for efficient parsing:
     - A `key: value` metadata header (status, rows, cols, execution_time,
-      query_id, csv_export, plus token_limit_warning when relevant).
+      query_id).
     - A `---` separator.
     - A TSV block: line 1 is the tab-separated column names, each following line
       is one row. Parse it directly with grep/awk/cut, e.g.
@@ -284,12 +283,20 @@ async def describe_table_tool(
       NULLs render as `\\N`; tabs/newlines inside values are backslash-escaped,
       so every row stays on exactly one line.
 
+    Auto-spill for large results:
+    - If the full TSV is too large to return inline, the tool does NOT truncate
+      silently or dump a wall of text. It writes the COMPLETE result to a temp
+      `.tsv` file (identical format) and returns a one-row proof-of-shape
+      preview plus a `results_file: /path` field. Read/grep/awk that file for
+      all rows. A `column_index` map (1=NAME 2=...) is included so you can target
+      columns by name without counting.
+    - The preview is one row only; `rows:` still reports the true total.
+
     Notes:
-    - Results are still cached for CSV export if under 5GB (use save_last_query_to_csv).
     - Respects the LIMIT clause if present in SQL.
-    - If you encounter token limit issues with large result sets, consider using
-      execute_big_query_to_disk instead, which streams results directly to a file
-      without returning the data in the response, or add a stricter LIMIT clause.
+    - To write results to a specific file you choose (to share or persist, any
+      size), use execute_query_to_file(sql, file_path) instead. This tool only
+      returns data inline or auto-spills to a temp file.
 
     Examples:
     - execute_query("SELECT * FROM SALES_DB.PUBLIC.CUSTOMERS LIMIT 10")
@@ -406,69 +413,31 @@ async def get_query_history_tool(
     )
 
 
-# Tool: Save Last Query to CSV
+# Tool: Execute Query to File
 @mcp.tool(
-    name="save_last_query_to_csv",
-    description="""Save the last executed query results to a CSV file.
+    name="execute_query_to_file",
+    description="""Execute a read-only SQL query and write its results to a TSV file you choose.
 
-    This tool exports the complete results from the most recently executed query
-    to a CSV file at the specified path. The query must have been executed
-    successfully and its results must be within the 5GB cache size limit.
+    Use this when you want the result as a file at a specific path -- to share
+    with someone or persist it -- regardless of size. A two-row lookup someone
+    wants sent on, or a multi-million-row export too big to return inline: same
+    tool. It streams results straight to disk (no data is returned in the
+    response and none is held in memory beyond a batch).
 
-    Features:
-    - Exports ALL rows from the last query
-    - Includes column headers
-    - Uses comma delimiter
-    - Handles NULL values as empty strings
-    - Formats datetime values in ISO format
-    - Optionally exports the SQL query to a .sql file (enabled by default)
+    The file uses the SAME format as the inline execute_query payload:
+    tab-delimited, NULL rendered as `\\N` (distinct from an empty field),
+    tabs/newlines/backslashes escaped, one row per line -- so you can
+    grep/awk/wc it identically.
 
-    Parameters:
-    - file_path: Path where the CSV file should be saved (absolute paths recommended)
-                 Note: Relative paths are resolved from the MCP server's working directory
-    - export_sql: Whether to also export the SQL query to a .sql file (default: true)
-
-    Requirements:
-    - A query must have been executed successfully using execute_query
-    - Query results must be under 5GB (cache limit)
-
-    Examples:
-    - save_last_query_to_csv("~/Downloads/customers.csv")
-    - save_last_query_to_csv("/tmp/query_results.csv")
-    - save_last_query_to_csv("./data/export.csv", export_sql=false)
-
-    Notes:
-    - When export_sql is true, the SQL file will be saved with the same name as the CSV file
-      but with a .sql extension (e.g., customers.csv → customers.sql)
-    - The SQL file will be formatted for readability with proper indentation
-    """,
-)
-async def save_last_query_to_csv_tool(
-    file_path: str, export_sql: bool = True
-) -> dict[str, Any]:
-    """Save the last query results to a CSV file."""
-    return await save_to_csv.save_last_query_to_csv(file_path, export_sql)
-
-
-# Tool: Execute Big Query to Disk
-@mcp.tool(
-    name="execute_big_query_to_disk",
-    description="""Execute a large read-only SQL query and save results directly to a CSV file.
-
-    This tool is designed for queries that return large result sets that would exceed
-    token limits. It streams results directly to disk without returning the data in
-    the response, avoiding token limit issues.
-
-    Features:
-    - Streams results directly to disk (doesn't return data in response)
-    - Handles arbitrarily large result sets using streaming
-    - Returns only execution status, row count, and file size
-    - Exports SQL query to a .sql file alongside the CSV
-    - Configurable timeout for long-running queries
+    When to use which tool:
+    - execute_query: you want to SEE the data (returns inline, or auto-spills a
+      large result to a temp file the server picks).
+    - execute_query_to_file: you want the data AS A FILE at a path you specify.
 
     Parameters:
     - sql: The SQL query to execute (must be read-only)
-    - file_path: Path where the CSV file should be saved (absolute paths recommended)
+    - file_path: Path where the TSV file should be saved (absolute paths recommended).
+                 A `.tsv` extension is appended if missing.
                  Note: Relative paths are resolved from the MCP server's working directory
     - database: Optional database context
     - schema: Optional schema context
@@ -477,26 +446,25 @@ async def save_last_query_to_csv_tool(
     Requirements:
     - Schema cache must be populated (run refresh_catalog first)
     - Query must be read-only (SELECT, SHOW, DESCRIBE, WITH)
-    - Files must not already exist (will not overwrite)
+    - The file must not already exist (will not overwrite)
 
     Examples:
-    - execute_big_query_to_disk("SELECT * FROM large_table", "~/Downloads/large_data.csv")
-    - execute_big_query_to_disk("SELECT * FROM sales_data", "/tmp/sales.csv", timeout_seconds=600)
+    - execute_query_to_file("SELECT * FROM customers LIMIT 2", "~/Downloads/sample.tsv")
+    - execute_query_to_file("SELECT * FROM large_table", "/tmp/export.tsv", timeout_seconds=600)
 
     Notes:
-    - CSV file uses comma delimiter, includes headers, empty string for NULLs
-    - SQL file is created only after successful CSV export
+    - TSV file is tab-delimited, includes a header line, NULL = `\\N`
     - Partial files are cleaned up on error
     """,
 )
-async def execute_big_query_to_disk_tool(
+async def execute_query_to_file_tool(
     sql: str,
     file_path: str,
     database: str | None = None,
     schema: str | None = None,
     timeout_seconds: int = 300,
 ) -> dict[str, Any]:
-    """Execute a large query and stream results to disk."""
+    """Execute a query and stream results to a file at a chosen path."""
     try:
         initialize_resources()
     except Exception as e:
@@ -504,7 +472,7 @@ async def execute_big_query_to_disk_tool(
 
     if connection is None or cache is None:
         raise RuntimeError("Connection or cache initialization failed")
-    return await execute_big_query_to_disk.execute_big_query_to_disk(
+    return await execute_query_to_file.execute_query_to_file(
         connection,
         cache,
         sql=sql,

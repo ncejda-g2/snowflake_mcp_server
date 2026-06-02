@@ -1,97 +1,62 @@
 """Query execution tool for running read-only SQL queries."""
 
-import json
 import logging
+import os
 import re
-import sys
+import uuid
 from datetime import datetime
 from typing import Any
 
-from server.constants import MAX_CACHE_SIZE_BYTES, MCP_CHAR_WARNING_THRESHOLD
+from server.constants import (
+    MCP_CHAR_WARNING_THRESHOLD,
+    SPILL_DIR,
+    SPILL_PREVIEW_ROWS,
+)
 from server.schema_cache import SchemaCache
+from server.serialization import (
+    TSV_NULL,
+    build_tsv,
+    column_index_map,
+    write_tsv_file,
+)
+from server.serialization import (
+    column_names as _column_names,
+)
+from server.serialization import (
+    format_value as _format_value,
+)
 from server.snowflake_connection import QueryValidator, SnowflakeConnection
 from server.tools.catalog_refresh import refresh_catalog
 
 logger = logging.getLogger(__name__)
 
-# In-memory cache for the last query results (for CSV export)
-last_query_cache: dict[str, Any] | None = None
+# Re-exported for backward compatibility with callers/tests that imported these
+# from query_executor before the serialization module existed.
+__all__ = [
+    "TSV_NULL",
+    "_build_tsv",
+    "_column_names",
+    "_format_value",
+    "execute_query",
+]
+
+# Backward-compatible aliases (the canonical implementations live in
+# server.serialization now).
+_build_tsv = build_tsv
 
 
-def _estimate_size(obj: Any) -> int:
-    """Estimate the memory size of an object in bytes."""
-    return sys.getsizeof(json.dumps(obj, default=str))
+def _spill_to_disk(
+    rows: list[dict], names: list[str]
+) -> tuple[str, int]:
+    """Write the full result to a temp TSV file and return (path, rows_written).
 
-
-def _format_value(value: Any) -> Any:
-    """Format a value for JSON serialization."""
-    if value is None:
-        return None
-    elif isinstance(value, datetime):
-        return value.isoformat()
-    elif isinstance(value, bytes):
-        return value.decode("utf-8", errors="ignore")
-    else:
-        return value
-
-
-# Sentinel rendered for SQL NULL in TSV output. Distinguishable from the empty
-# string (an actual zero-length value), which renders as a literal empty field.
-TSV_NULL = "\\N"
-
-
-def _column_names(columns: Any, sample_row: Any = None) -> list[str]:
-    """Extract ordered column names from result.columns.
-
-    result.columns is normally a list of {"name", "type", "nullable"} dicts
-    (see SnowflakeConnection.execute_query). Some callers/tests pass a plain
-    list of name strings. Fall back to the keys of a sample row dict.
+    Same TSV format/escaping/NULL sentinel as the inline payload, so the agent
+    can grep/awk/wc the file exactly as it would the inline block.
     """
-    if columns:
-        first = columns[0]
-        if isinstance(first, dict):
-            return [str(c.get("name", "")) for c in columns]
-        return [str(c) for c in columns]
-    if isinstance(sample_row, dict):
-        return list(sample_row.keys())
-    return []
-
-
-def _tsv_escape(value: Any) -> str:
-    """Render a single cell value as a TSV-safe field.
-
-    Guarantees exactly one logical line per row and clean tab-delimited fields
-    so the LLM can rely on awk -F'\\t' / cut -f / grep. Tabs, newlines, carriage
-    returns and backslashes are escaped reversibly. SQL NULL becomes TSV_NULL so
-    it is distinguishable from an empty string.
-    """
-    if value is None:
-        return TSV_NULL
-    if not isinstance(value, str):
-        value = str(value)
-    # Backslash first so we don't double-escape the escapes we add next.
-    return (
-        value.replace("\\", "\\\\")
-        .replace("\t", "\\t")
-        .replace("\r", "\\r")
-        .replace("\n", "\\n")
-    )
-
-
-def _build_tsv(rows: list[dict], column_names: list[str]) -> str:
-    """Build a TSV block: header line of column names + one line per row.
-
-    Values are pulled positionally by column name so the field order matches the
-    header exactly. Designed for direct piping into grep/awk/cut by the agent.
-    """
-    lines = ["\t".join(_tsv_escape(name) for name in column_names)]
-    for row in rows:
-        lines.append(
-            "\t".join(
-                _tsv_escape(_format_value(row.get(name))) for name in column_names
-            )
-        )
-    return "\n".join(lines)
+    os.makedirs(SPILL_DIR, exist_ok=True)
+    file_path = os.path.join(SPILL_DIR, f"query_{uuid.uuid4().hex}.tsv")
+    written = write_tsv_file(file_path, rows, names)
+    return file_path, written
 
 
 def build_text_response(
@@ -150,6 +115,16 @@ async def execute_query(
     ``awk -F'\\t' 'NR>1 && $3=="X"'``. NULLs render as ``\\N``; tabs/newlines in
     values are backslash-escaped so each row stays on exactly one line.
 
+    Auto-spill: when the full TSV would exceed the inline size threshold, the
+    tool does NOT dump a wall of text or silently truncate. It writes the
+    *complete* result to a temp ``.tsv`` file (identical format) and returns a
+    one-row proof-of-shape preview plus ``results_file: /path``. The preview is
+    deliberately a single row: for a spilled result the preview is never the
+    answer, so it only needs to show column names and value formatting so the
+    agent can write a correct grep/awk against the file. The agent reads/greps
+    that file for the full data. NULL/empty semantics are identical on disk and
+    inline.
+
     Args:
         connection: Active Snowflake connection
         cache: Schema cache instance
@@ -187,10 +162,6 @@ async def execute_query(
         result = connection.execute_query(sql=sql, database=database, schema=schema)
 
         if not result.data:
-            # No results, but still clear the cache for consistency
-            global last_query_cache
-            last_query_cache = None
-
             return build_text_response(
                 status="success",
                 fields={
@@ -201,85 +172,56 @@ async def execute_query(
                 tsv=_build_tsv([], _column_names(result.columns)),
             )
 
-        # Check if results exceed cache size limit for CSV export
-        cache_data = {
-            "all_results": result.data,
-            "columns": result.columns,
-            "sql": sql,
-            "database": database,
-            "schema": schema,
-            "cached_at": datetime.now().isoformat(),
-            "execution_time": result.execution_time,
-            "query_id": result.query_id,
-        }
-
-        estimated_size = _estimate_size(cache_data)
-        cache_exceeded = estimated_size > MAX_CACHE_SIZE_BYTES
-
-        # Update last_query_cache for CSV export
-        if cache_exceeded:
-            # Store metadata only in last_query_cache with warning
-            last_query_cache = {
-                "status": "size_exceeded",
-                "message": f"Query results ({estimated_size / (1024**3):.2f}GB) exceed cache limit ({MAX_CACHE_SIZE_BYTES / (1024**3):.2f}GB)",
-                "sql": sql,
-                "database": database,
-                "schema": schema,
-                "cached_at": datetime.now().isoformat(),
-                "row_count": len(result.data),
-            }
-            logger.warning(
-                f"Query results too large for caching: {estimated_size / (1024**3):.2f}GB"
-            )
-            csv_available = False
-            csv_message = (
-                f"Results too large for CSV export ({estimated_size / (1024**3):.2f}GB exceeds "
-                f"{MAX_CACHE_SIZE_BYTES / (1024**3):.2f}GB limit). Consider using execute_big_query_to_disk "
-                f"to stream large results directly to a file."
-            )
-        else:
-            # Store full results for CSV export
-            last_query_cache = cache_data
-            logger.debug(
-                f"Cached query results for CSV export: {estimated_size / (1024**2):.2f}MB"
-            )
-            csv_available = True
-            csv_message = (
-                "Results cached and ready for CSV export using save_last_query_to_csv"
-            )
-
         # Serialize the row data as TSV (header line + one line per row).
         # TSV is the payload the agent parses with grep/awk/cut, and is far more
-        # token-efficient than the previous array-of-dicts (no per-row key repeat).
+        # token-efficient than an array-of-dicts (no per-row key repeat).
         column_names = _column_names(result.columns, result.data[0])
         tsv = _build_tsv(result.data, column_names)
-
-        # Check if response might exceed MCP token limits. We measure the TSV
-        # block since that is the bulk of what actually gets serialized now.
-        response_size_estimate = len(tsv)
-
-        # Add warning if approaching estimated token limits (at 80% threshold)
-        token_warning = None
-        if response_size_estimate > MCP_CHAR_WARNING_THRESHOLD:
-            token_warning = (
-                f"Response size ({response_size_estimate:,} chars) is approaching typical MCP token limits. "
-                f"For larger result sets, consider using execute_big_query_to_disk to stream results directly to a file, "
-                f"or add a LIMIT clause to reduce the result set size."
-            )
-            logger.warning(
-                f"Query response approaching token limits: {response_size_estimate:,} chars"
-            )
 
         fields: dict[str, Any] = {
             "rows": len(result.data),
             "cols": len(column_names),
             "execution_time": round(result.execution_time, 4),
             "query_id": result.query_id,
-            "csv_export": "available" if csv_available else "unavailable",
-            "csv_message": csv_message,
         }
-        if token_warning:
-            fields["token_limit_warning"] = token_warning
+
+        # Auto-spill: if the full TSV is too large to return inline, write the
+        # COMPLETE result to a temp .tsv file and return only a one-row
+        # proof-of-shape preview plus the file path. We never dump a wall of
+        # text and never silently truncate without telling the agent. The
+        # preview is not a data sample: for a spilled result it can never be the
+        # answer, so a single row (column shape + value formatting) is enough
+        # for the agent to write a correct grep/awk and avoids wasting context.
+        if len(tsv) > MCP_CHAR_WARNING_THRESHOLD:
+            spill_path, written = _spill_to_disk(result.data, column_names)
+            preview_count = min(SPILL_PREVIEW_ROWS, written)
+            preview_tsv = _build_tsv(
+                result.data[:SPILL_PREVIEW_ROWS], column_names
+            )
+            row_word = "row" if preview_count == 1 else "rows"
+            fields["results_file"] = spill_path
+            fields["preview_rows"] = preview_count
+            # 1-based name->position map so the agent never has to count columns
+            # by eye to write awk/cut (the most error-prone step on wide results).
+            # Spill-only: small/mid inline results are narrow enough to eyeball.
+            fields["column_index"] = column_index_map(column_names)
+            fields["results_truncated_inline"] = (
+                f"Full result ({written:,} rows, {len(tsv):,} chars) exceeds the inline "
+                f"limit and was written to {spill_path}. The preview below is a "
+                f"proof-of-shape sample ({preview_count} {row_word}), not the answer: "
+                f"read/grep/awk the file for all rows "
+                f"(same TSV format: \\t-delimited, NULL = \\N, one row per line). "
+                f"To target a column by name, use the 1-based column_index map above "
+                f'(e.g. 63=TYPE means awk -F\'\\t\' \'$63=="..."\'); do not count '
+                f"columns by eye."
+            )
+            logger.warning(
+                f"Query result spilled to disk: {written:,} rows, "
+                f"{len(tsv):,} chars -> {spill_path}"
+            )
+            return build_text_response(
+                status="success", fields=fields, tsv=preview_tsv
+            )
 
         return build_text_response(status="success", fields=fields, tsv=tsv)
 
@@ -435,16 +377,6 @@ async def validate_query_without_execution(
         )
 
     return response
-
-
-def get_last_query_cache() -> dict[str, Any] | None:
-    """
-    Get the cached results from the last executed query.
-
-    Returns:
-        The cached query data or None if no cache exists
-    """
-    return last_query_cache
 
 
 async def get_query_history(

@@ -1,19 +1,18 @@
 """Tests for server/tools/query_executor.py module."""
 
+import os
 from datetime import datetime
 from unittest.mock import Mock, patch
 
 import pytest
 
-from server.constants import MAX_CACHE_SIZE_BYTES, MCP_CHAR_WARNING_THRESHOLD
+from server.constants import MCP_CHAR_WARNING_THRESHOLD
 from server.schema_cache import SchemaCache
 from server.snowflake_connection import QueryType, QueryValidator, SnowflakeConnection
 from server.tools import query_executor
 from server.tools.query_executor import (
-    _estimate_size,
     _format_value,
     execute_query,
-    get_last_query_cache,
     get_query_history,
     validate_query_without_execution,
 )
@@ -50,23 +49,6 @@ def parse_text_response(text: str) -> dict:
 
 class TestHelperFunctions:
     """Test helper functions."""
-
-    def test_estimate_size(self):
-        """Test _estimate_size function."""
-        obj = {"key": "value", "number": 123}
-        size = _estimate_size(obj)
-        assert size > 0
-        assert isinstance(size, int)
-
-    def test_estimate_size_complex_object(self):
-        """Test _estimate_size with complex nested object."""
-        obj = {
-            "list": [1, 2, 3],
-            "nested": {"inner": "value"},
-            "data": "x" * 1000,
-        }
-        size = _estimate_size(obj)
-        assert size > 1000
 
     def test_format_value_none(self):
         """Test _format_value with None."""
@@ -127,13 +109,6 @@ class TestExecuteQuery:
         result.execution_time = 0.123
         result.query_id = "test-query-id-123"
         return result
-
-    @pytest.fixture(autouse=True)
-    def clear_cache(self):
-        """Clear the query cache before each test."""
-        query_executor.last_query_cache = None
-        yield
-        query_executor.last_query_cache = None
 
     @pytest.mark.asyncio
     async def test_execute_query_invalid_sql(self, mock_connection, mock_cache):
@@ -235,8 +210,10 @@ class TestExecuteQuery:
             assert len(parsed["data_rows"]) == 2
             assert parsed["columns"] == ["id", "name"]
             assert parsed["execution_time"] == "0.123"
-            assert parsed["csv_export"] == "available"
             assert parsed["query_id"] == "test-query-id-123"
+            # The chatty export fields are gone now.
+            assert "export_available" not in parsed
+            assert "export_message" not in parsed
             # Row data is positional and matches the header order.
             assert parsed["data_rows"] == [["1", "Alice"], ["2", "Bob"]]
 
@@ -260,7 +237,6 @@ class TestExecuteQuery:
             assert parsed["status"] == "success"
             assert parsed["data_rows"] == []
             assert "no results" in parsed["message"].lower()
-            assert get_last_query_cache() is None
 
     @pytest.mark.asyncio
     async def test_execute_query_expired_cache_triggers_refresh(
@@ -294,48 +270,17 @@ class TestExecuteQuery:
             assert parse_text_response(result)["status"] == "success"
 
     @pytest.mark.asyncio
-    async def test_execute_query_large_cache_exceeded(
-        self, mock_connection, mock_cache
+    async def test_execute_query_auto_spills_large_result(
+        self, mock_connection, mock_cache, tmp_path
     ):
-        """Test query with results exceeding cache limit."""
-        # Create large result set
-        large_data = [{"id": i, "data": "x" * 10000} for i in range(1000)]
-        mock_result = Mock()
-        mock_result.data = large_data
-        mock_result.columns = ["id", "data"]
-        mock_result.execution_time = 1.5
-        mock_result.query_id = "large-query-id"
-        mock_connection.execute_query.return_value = mock_result
+        """Large results spill to a temp .tsv file with a preview + path.
 
-        with (
-            patch.object(
-                QueryValidator, "validate", return_value=(True, None, QueryType.SELECT)
-            ),
-            patch("server.tools.query_executor._estimate_size") as mock_estimate,
-        ):
-            # Mock estimate_size to return a value larger than MAX_CACHE_SIZE_BYTES
-            mock_estimate.return_value = MAX_CACHE_SIZE_BYTES + 1000000
-
-            result = await execute_query(
-                mock_connection, mock_cache, "SELECT * FROM large_table"
-            )
-
-            parsed = parse_text_response(result)
-            assert parsed["status"] == "success"
-            assert parsed["csv_export"] == "unavailable"
-            assert "too large for CSV export" in parsed["csv_message"]
-
-            # Check cache only contains metadata
-            cache = get_last_query_cache()
-            assert cache is not None
-            assert cache["status"] == "size_exceeded"
-            assert "all_results" not in cache
-
-    @pytest.mark.asyncio
-    async def test_execute_query_token_warning(self, mock_connection, mock_cache):
-        """Test query with results approaching token limits."""
-        # Create a result set whose TSV size exceeds the warning threshold.
-        # Each row contributes ~210 chars of TSV, so size generously past it.
+        The tool must NOT dump the full wall of text inline and must NOT
+        truncate silently: it writes the COMPLETE result to disk and returns a
+        short preview plus the file path. The on-disk file is the same TSV
+        format as the inline payload.
+        """
+        # Create a result set whose TSV size exceeds the spill threshold.
         cell_len = 200
         num_rows = (MCP_CHAR_WARNING_THRESHOLD // cell_len) + 50
         medium_data = [{"id": i, "data": "x" * cell_len} for i in range(num_rows)]
@@ -346,8 +291,11 @@ class TestExecuteQuery:
         mock_result.query_id = "medium-query-id"
         mock_connection.execute_query.return_value = mock_result
 
-        with patch.object(
-            QueryValidator, "validate", return_value=(True, None, QueryType.SELECT)
+        with (
+            patch.object(
+                QueryValidator, "validate", return_value=(True, None, QueryType.SELECT)
+            ),
+            patch.object(query_executor, "SPILL_DIR", str(tmp_path)),
         ):
             result = await execute_query(
                 mock_connection, mock_cache, "SELECT * FROM medium_table"
@@ -355,10 +303,23 @@ class TestExecuteQuery:
 
             parsed = parse_text_response(result)
             assert parsed["status"] == "success"
-            assert "token_limit_warning" in parsed
-            assert (
-                "approaching typical MCP token limits" in parsed["token_limit_warning"]
-            )
+            # True total row count is still reported.
+            assert parsed["rows"] == str(num_rows)
+            # A spill file path is returned and the file exists.
+            assert "results_file" in parsed
+            spill_path = parsed["results_file"]
+            assert spill_path.endswith(".tsv")
+            assert os.path.exists(spill_path)
+            # Inline payload is only the preview (header + N rows), not the full set.
+            assert len(parsed["data_rows"]) <= query_executor.SPILL_PREVIEW_ROWS
+            # A 1-based column index map is emitted so the agent never has to
+            # count columns by eye to write awk/cut against the spilled file.
+            assert parsed["column_index"] == "1=id 2=data"
+            # The full file contains every row plus the header line.
+            with open(spill_path, encoding="utf-8") as f:
+                file_lines = f.read().splitlines()
+            assert len(file_lines) == num_rows + 1  # header + all rows
+            assert file_lines[0].split("\t") == ["id", "data"]
 
     @pytest.mark.asyncio
     async def test_execute_query_formats_values(self, mock_connection, mock_cache):
@@ -652,30 +613,6 @@ class TestValidateQueryWithoutExecution:
             # Should not suggest LIMIT if already present
             if "hints" in result:
                 assert not any("LIMIT" in hint for hint in result["hints"])
-
-
-class TestGetLastQueryCache:
-    """Test get_last_query_cache function."""
-
-    @pytest.fixture(autouse=True)
-    def clear_cache(self):
-        """Clear the query cache before each test."""
-        query_executor.last_query_cache = None
-        yield
-        query_executor.last_query_cache = None
-
-    def test_get_last_query_cache_empty(self):
-        """Test getting cache when it's empty."""
-        assert get_last_query_cache() is None
-
-    def test_get_last_query_cache_with_data(self):
-        """Test getting cache with data."""
-        test_cache = {"sql": "SELECT * FROM test", "data": [{"id": 1}]}
-        query_executor.last_query_cache = test_cache
-
-        result = get_last_query_cache()
-        assert result == test_cache
-        assert result["sql"] == "SELECT * FROM test"
 
 
 class TestGetQueryHistory:
