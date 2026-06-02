@@ -6,7 +6,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from server.constants import MCP_CHAR_WARNING_THRESHOLD
+from server.constants import INLINE_RESULT_CHAR_BUDGET
 from server.schema_cache import SchemaCache
 from server.snowflake_connection import QueryType, QueryValidator, SnowflakeConnection
 from server.tools import query_executor
@@ -280,9 +280,9 @@ class TestExecuteQuery:
         short preview plus the file path. The on-disk file is the same TSV
         format as the inline payload.
         """
-        # Create a result set whose TSV size exceeds the spill threshold.
+        # Create a result set whose TSV size exceeds the inline budget.
         cell_len = 200
-        num_rows = (MCP_CHAR_WARNING_THRESHOLD // cell_len) + 50
+        num_rows = (INLINE_RESULT_CHAR_BUDGET // cell_len) + 50
         medium_data = [{"id": i, "data": "x" * cell_len} for i in range(num_rows)]
         mock_result = Mock()
         mock_result.data = medium_data
@@ -336,6 +336,72 @@ class TestExecuteQuery:
                 file_lines = f.read().splitlines()
             assert len(file_lines) == num_rows + 1  # header + all rows
             assert file_lines[0].split("\t") == ["id", "data"]
+
+    @pytest.mark.asyncio
+    async def test_narrow_inline_result_keeps_positional_tsv(
+        self, mock_connection, mock_cache
+    ):
+        """A few-column inline result stays as compact positional TSV.
+
+        Narrow results are trivially readable, so positional (header + rows) is
+        the cheaper format and no labeling is applied.
+        """
+        cols = ["id", "name", "city"]  # < WIDE_RESULT_COL_THRESHOLD
+        data = [{"id": 1, "name": "Alice", "city": "NYC"}]
+        mock_result = Mock()
+        mock_result.data = data
+        mock_result.columns = cols
+        mock_result.execution_time = 0.1
+        mock_result.query_id = "narrow-id"
+        mock_connection.execute_query.return_value = mock_result
+
+        with patch.object(
+            QueryValidator, "validate", return_value=(True, None, QueryType.SELECT)
+        ):
+            result = await execute_query(mock_connection, mock_cache, "SELECT * FROM t")
+
+        header_part, _, tsv_part = result.partition("\n---\n")
+        # Positional format: no labeled-rows marker, header line present.
+        assert "format:" not in header_part
+        lines = tsv_part.split("\n")
+        assert lines[0] == "id\tname\tcity"  # header line of column names
+        assert lines[1] == "1\tAlice\tNYC"  # bare positional values
+        assert "id=" not in tsv_part  # not labeled
+
+    @pytest.mark.asyncio
+    async def test_wide_inline_result_uses_labeled_rows(
+        self, mock_connection, mock_cache
+    ):
+        """A wide-but-short inline result switches to labeled name=value rows.
+
+        It fits inline (small total size) yet has enough columns that counting
+        to a position by eye is error-prone, so each value is glued to its name
+        and there is no positional header line to cross-reference.
+        """
+        n = query_executor.WIDE_RESULT_COL_THRESHOLD  # exactly at the threshold
+        cols = [f"c{i}" for i in range(n)]
+        row = {c: i for i, c in enumerate(cols)}
+        mock_result = Mock()
+        mock_result.data = [row]
+        mock_result.columns = cols
+        mock_result.execution_time = 0.1
+        mock_result.query_id = "wide-id"
+        mock_connection.execute_query.return_value = mock_result
+
+        with patch.object(
+            QueryValidator, "validate", return_value=(True, None, QueryType.SELECT)
+        ):
+            result = await execute_query(mock_connection, mock_cache, "SELECT * FROM t")
+
+        header_part, _, tsv_part = result.partition("\n---\n")
+        # No redundant format marker: a block of name=value pairs is
+        # self-evidently labeled, so we don't waste tokens describing it.
+        assert "format:" not in header_part
+        body_lines = tsv_part.split("\n")
+        # Exactly the data rows -- no positional header line.
+        assert len(body_lines) == 1
+        # Every value is glued to its own column name.
+        assert body_lines[0] == "\t".join(f"c{i}={i}" for i in range(n))
 
     @pytest.mark.asyncio
     async def test_execute_query_formats_values(self, mock_connection, mock_cache):

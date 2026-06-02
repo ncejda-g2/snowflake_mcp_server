@@ -10,11 +10,13 @@ from datetime import datetime
 from server.serialization import (
     TSV_EXTENSION,
     TSV_NULL,
+    build_labeled_rows,
     build_tsv,
     build_tsv_rows,
     column_index_map,
     column_names,
     format_value,
+    labeled_row_line,
     tsv_escape,
     write_tsv_file,
 )
@@ -80,6 +82,33 @@ def test_build_tsv_rows_has_no_header_line():
 
 def test_build_tsv_rows_empty():
     assert build_tsv_rows([], ["id", "name"]) == ""
+
+
+def test_labeled_rows_glue_name_to_value():
+    """Wide inline format: each value carries its column name, no header line.
+
+    This is the format the LLM reads directly for wide results, so a value can
+    never be mis-associated with the wrong column by miscounting.
+    """
+    rows = [{"id": 1, "name": "Alice"}, {"id": 2, "name": None}]
+    names = ["id", "name"]
+    block = build_labeled_rows(rows, names)
+    lines = block.split("\n")
+    assert lines[0] == "id=1\tname=Alice"
+    # NULL still uses the shared sentinel, glued to its column name.
+    assert lines[1] == f"id=2\tname={TSV_NULL}"
+    assert len(lines) == len(rows)
+
+
+def test_labeled_row_line_escapes_and_orders():
+    """Values reuse the TSV escape pipeline; field order follows ``names``."""
+    row = {"b": "x\ty", "a": 1}
+    # Order follows the names list, not the dict insertion order.
+    assert labeled_row_line(row, ["a", "b"]) == "a=1\tb=x\\ty"
+
+
+def test_build_labeled_rows_empty():
+    assert build_labeled_rows([], ["id", "name"]) == ""
 
 
 def test_column_index_map_is_1_based_and_matches_awk():

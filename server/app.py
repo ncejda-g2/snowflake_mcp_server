@@ -313,11 +313,16 @@ async def describe_table_tool(
     - A `key: value` metadata header (status, rows, cols, execution_time,
       query_id).
     - A `---` separator.
-    - A TSV block: line 1 is the tab-separated column names, each following line
-      is one row. Parse it directly with grep/awk/cut, e.g.
-      `awk -F'\\t' 'NR>1 && $3=="ACTIVE"'`.
-      NULLs render as `\\N`; tabs/newlines inside values are backslash-escaped,
-      so every row stays on exactly one line.
+    - A data block in ONE of two formats, chosen by column count:
+      - Narrow result (few columns): positional TSV. Line 1 is the tab-separated
+        column names, each following line is one row. NULLs render as `\\N`;
+        tabs/newlines inside values are backslash-escaped, so every row stays on
+        exactly one line.
+      - Wide result (many columns): labeled rows. There is NO header line; each
+        row is tab-separated `name=value` pairs, so every value carries its own
+        column name and you never have to count columns to read it. Same `\\N`
+        NULL sentinel and escaping.
+      In both cases each row is exactly one physical line.
 
     Auto-spill for large results:
     - If the full TSV is too large to return inline, the tool does NOT truncate
