@@ -309,32 +309,36 @@ async def describe_table_tool(
     - database: Optional database context
     - schema: Optional schema context
 
-    Returns a compact TEXT payload (not JSON), shaped for efficient parsing:
-    - A `key: value` metadata header (status, rows, cols, execution_time,
-      query_id).
-    - A `---` separator.
-    - A data block in ONE of two formats, chosen by column count:
-      - Narrow result (few columns): positional TSV. Line 1 is the tab-separated
-        column names, each following line is one row. NULLs render as `\\N`;
-        tabs/newlines inside values are backslash-escaped, so every row stays on
-        exactly one line.
-      - Wide result (many columns): labeled rows. There is NO header line; each
-        row is tab-separated `name=value` pairs, so every value carries its own
-        column name and you never have to count columns to read it. Same `\\N`
-        NULL sentinel and escaping.
-      In both cases each row is exactly one physical line.
+    Returns a compact TEXT payload (not JSON), shaped for efficient parsing.
+    A result is returned in ONE of two ways:
 
-    Auto-spill for large results:
-    - If the full TSV is too large to return inline, the tool does NOT truncate
-      silently or dump a wall of text. It writes the COMPLETE result to a temp
-      `.tsv` file (identical format, with a header line) and returns a one-row
-      proof-of-shape preview plus a `results_file: /path` field. Read/grep/awk
-      that file for all rows.
-    - The preview is DATA ONLY (no header line). The column names + their 1-based
-      positions come from the `column_index` map (1=NAME 2=...), which is the
-      single column reference for both the preview and the file -- target columns
-      by name via the map (e.g. `63=TYPE` -> awk `$63`) without counting.
-    - The preview is one row only; `rows:` still reports the true total.
+    1. INLINE (only for small, narrow results -- few columns AND few rows):
+       - A `key: value` metadata header (status, rows, cols, execution_time,
+         query_id).
+       - A `---` separator.
+       - A positional TSV block: line 1 is the tab-separated column names, each
+         following line is one row. Parse directly with grep/awk/cut, e.g.
+         `awk -F'\\t' 'NR>1 && $3=="X"'`. NULLs render as `\\N`; tabs/newlines in
+         values are backslash-escaped, so every row stays on exactly one line.
+
+    2. SPILLED TO FILE (whenever the result is too WIDE -- many columns -- too
+       TALL -- many rows -- or too LARGE -- one giant cell). The tool does NOT
+       truncate silently or dump a wall of text. It writes the COMPLETE result
+       to a temp `.tsv` file
+       (positional TSV, with a header line) and the inline payload becomes:
+       - the same metadata header, plus `results_file: /path`, `preview_rows`,
+         a `column_index` map, and a `spilled` marker.
+       - a `---` separator, then a ONE-ROW, DATA-ONLY preview (no header line).
+       Read/grep/awk the file for all rows. Resolve any column by name->index via
+       the `column_index` map (e.g. `63=TYPE` -> awk `$63`) without counting.
+       `rows:` always reports the true total, not the preview count.
+
+    Why results spill instead of inlining: read straight from context there is no
+    shell, so a WIDE result forces counting tab positions by eye and a TALL one
+    forces aggregating/scanning many rows by eye -- both error prone. Spilled, you
+    target columns by index and run counts/filters with awk/wc/grep on the file:
+    exact, not estimated. For aggregate questions, prefer pushing the work into
+    SQL (COUNT/SUM/WHERE/GROUP BY) over reading rows back at all.
 
     Notes:
     - Respects the LIMIT clause if present in SQL.
@@ -542,6 +546,14 @@ async def execute_query_to_file_tool(
 def main():
     """Main entry point for the application."""
     try:
+        # Clear stale spill files left by a previous run before serving. Uses the
+        # same TTL + FIFO policy as the per-spill sweep (it does NOT blindly wipe
+        # the dir), so a just-restarted client whose task is mid-read keeps any
+        # still-fresh file while genuinely old/over-cap leftovers are reclaimed.
+        removed = query_executor.sweep_spill_dir()
+        if removed:
+            logger.info(f"Startup spill cleanup removed {removed} stale file(s)")
+
         # Run the MCP server
         if config.transport == "stdio":
             logger.info("Starting MCP server in STDIO mode")

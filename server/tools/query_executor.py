@@ -1,22 +1,26 @@
 """Query execution tool for running read-only SQL queries."""
 
+import glob
 import logging
 import os
 import re
+import time
 import uuid
 from datetime import datetime
 from typing import Any
 
 from server.constants import (
     INLINE_RESULT_CHAR_BUDGET,
+    MAX_INLINE_COLUMNS,
+    MAX_INLINE_ROWS,
     SPILL_DIR,
+    SPILL_FILE_TTL_SECONDS,
+    SPILL_MAX_FILES,
     SPILL_PREVIEW_ROWS,
-    WIDE_RESULT_COL_THRESHOLD,
 )
 from server.schema_cache import SchemaCache
 from server.serialization import (
     TSV_NULL,
-    build_labeled_rows,
     build_tsv,
     build_tsv_rows,
     column_index_map,
@@ -47,6 +51,70 @@ __all__ = [
 # server.serialization now).
 _build_tsv = build_tsv
 
+# Filename pattern for spilled result files. The glob is intentionally narrow so
+# the cleanup sweep only ever touches files THIS tool created -- never anything
+# else a user might place in (or that shares) the temp dir.
+_SPILL_GLOB = "query_*.tsv"
+
+
+def sweep_spill_dir() -> int:
+    """Bound SPILL_DIR by age then by count; return the number of files deleted.
+
+    Enforces the retention policy for spilled result files (see constants):
+      1. AGE  -- delete any spill file whose mtime is older than
+         SPILL_FILE_TTL_SECONDS.
+      2. COUNT -- if more than SPILL_MAX_FILES survive the age pass, delete the
+         OLDEST first (FIFO by mtime) until at most SPILL_MAX_FILES remain.
+
+    Best-effort and race-safe: the directory may not exist yet (nothing to do),
+    files may be deleted by another sweep between listing and unlinking, and a
+    single unlink failure (e.g. permissions) must not abort the rest. Called on
+    server startup and before every new spill, so cleanup needs no scheduler or
+    background thread.
+    """
+    try:
+        paths = glob.glob(os.path.join(SPILL_DIR, _SPILL_GLOB))
+    except OSError:
+        return 0
+
+    # Snapshot (path, mtime); skip any file that vanished between glob and stat.
+    entries: list[tuple[str, float]] = []
+    for path in paths:
+        try:
+            entries.append((path, os.path.getmtime(path)))
+        except OSError:
+            continue
+
+    now = time.time()
+    deleted = 0
+
+    def _unlink(path: str) -> None:
+        nonlocal deleted
+        try:
+            os.remove(path)
+            deleted += 1
+        except OSError:
+            pass  # already gone, or not ours to remove -- ignore
+
+    # 1. Age pass.
+    survivors: list[tuple[str, float]] = []
+    for path, mtime in entries:
+        if now - mtime > SPILL_FILE_TTL_SECONDS:
+            _unlink(path)
+        else:
+            survivors.append((path, mtime))
+
+    # 2. Count pass (FIFO: oldest mtime first).
+    if len(survivors) > SPILL_MAX_FILES:
+        survivors.sort(key=lambda e: e[1])  # oldest first
+        overflow = len(survivors) - SPILL_MAX_FILES
+        for path, _mtime in survivors[:overflow]:
+            _unlink(path)
+
+    if deleted:
+        logger.info(f"Spill cleanup removed {deleted} stale file(s) from {SPILL_DIR}")
+    return deleted
+
 
 def _spill_to_disk(
     rows: list[dict], names: list[str]
@@ -54,9 +122,13 @@ def _spill_to_disk(
     """Write the full result to a temp TSV file and return (path, rows_written).
 
     Same TSV format/escaping/NULL sentinel as the inline payload, so the agent
-    can grep/awk/wc the file exactly as it would the inline block.
+    can grep/awk/wc the file exactly as it would the inline block. Sweeps stale
+    spill files first so the directory stays bounded under almost-always-spill.
     """
     os.makedirs(SPILL_DIR, exist_ok=True)
+    # Prune BEFORE writing so the new file always survives its own sweep and the
+    # cap is enforced at the moment the directory grows.
+    sweep_spill_dir()
     file_path = os.path.join(SPILL_DIR, f"query_{uuid.uuid4().hex}.tsv")
     written = write_tsv_file(file_path, rows, names)
     return file_path, written
@@ -118,11 +190,14 @@ async def execute_query(
     ``awk -F'\\t' 'NR>1 && $3=="X"'``. NULLs render as ``\\N``; tabs/newlines in
     values are backslash-escaped so each row stays on exactly one line.
 
-    Auto-spill: when the full TSV would exceed the inline size threshold, the
-    tool does NOT dump a wall of text or silently truncate. It writes the
-    *complete* result to a temp ``.tsv`` file (identical format, including a
-    header line) and returns a one-row proof-of-shape preview plus
-    ``results_file: /path`` and a ``column_index`` map. The preview is
+    Auto-spill: a result is returned inline ONLY when it is narrow (a handful of
+    columns) AND short (a screenful of rows). If it is too WIDE (more columns
+    than fit a by-eye read), too TALL (more rows than the model can reliably
+    aggregate/scan in context), or too LARGE (the TSV busts the char budget --
+    e.g. one giant cell), the tool does NOT dump a wall of text or silently
+    truncate. It writes the *complete* result to a temp ``.tsv`` file (identical
+    format, including a header line) and returns a one-row proof-of-shape preview
+    plus ``results_file: /path`` and a ``column_index`` map. The preview is
     deliberately a single row and is DATA ONLY (no header line): for a spilled
     result the preview is never the answer, and the column names already live
     -- with their positions -- in the ``column_index`` map, so repeating them as
@@ -187,26 +262,37 @@ async def execute_query(
             "query_id": result.query_id,
         }
 
-        # Choose the inline format up front, BEFORE the size gate, so the gate
-        # measures the exact bytes we would actually emit. A wide result goes out
-        # as labeled rows (every column name repeats on every row), which is
-        # materially larger than the positional TSV; sizing the gate on the
-        # positional form would let a wide+tall result sneak past and then blow
-        # the real limit once inflated. Narrow results stay positional (cheap).
-        is_wide = len(column_names) >= WIDE_RESULT_COL_THRESHOLD
-        if is_wide:
-            inline_body = build_labeled_rows(result.data, column_names)
-        else:
-            inline_body = _build_tsv(result.data, column_names)
+        # Inline results are ONLY ever a narrow positional TSV (header line +
+        # bare tab-separated rows). There is no inline ``name=value`` format:
+        # the moment a result is wide enough that reading a value by counting
+        # tab positions becomes error-prone, it does not belong in context at
+        # all -- it spills to a file where the agent reads it by column INDEX
+        # (column_index map -> awk $N) with zero counting.
+        #
+        # So a result spills if ANY gate trips:
+        #   * too WIDE  -- more than MAX_INLINE_COLUMNS columns: hard to read by
+        #                  eye (counting tab positions), regardless of row count.
+        #   * too TALL  -- more than MAX_INLINE_ROWS rows: a wall the model would
+        #                  have to aggregate/scan by eye, which it does
+        #                  unreliably (measured: miscounts on COUNT-style
+        #                  questions). Spilled, the agent uses awk/wc -- exact.
+        #   * too LARGE -- the TSV exceeds INLINE_RESULT_CHAR_BUDGET: a backstop
+        #                  for the rare narrow+short result carrying a giant
+        #                  single cell (e.g. a big JSON blob in one row).
+        # The gates are orthogonal: shape (wide/tall) handles "hard to reason
+        # over in context", size handles "one pathologically huge value".
+        inline_body = _build_tsv(result.data, column_names)
+        too_wide = len(column_names) > MAX_INLINE_COLUMNS
+        too_tall = len(result.data) > MAX_INLINE_ROWS
+        too_large = len(inline_body) > INLINE_RESULT_CHAR_BUDGET
 
-        # Auto-spill: if the inline body is too large to return, write the
-        # COMPLETE result to a temp .tsv file and return only a one-row
-        # proof-of-shape preview plus the file path. We never dump a wall of
-        # text and never silently truncate without telling the agent. The
-        # preview is not a data sample: for a spilled result it can never be the
-        # answer, so a single row (column shape + value formatting) is enough
+        # Auto-spill: write the COMPLETE result to a temp .tsv file and return
+        # only a one-row proof-of-shape preview plus the file path. We never dump
+        # a wall of text and never silently truncate without telling the agent.
+        # The preview is not a data sample: for a spilled result it can never be
+        # the answer, so a single row (column shape + value formatting) is enough
         # for the agent to write a correct grep/awk and avoids wasting context.
-        if len(inline_body) > INLINE_RESULT_CHAR_BUDGET:
+        if too_wide or too_tall or too_large:
             spill_path, written = _spill_to_disk(result.data, column_names)
             preview_count = min(SPILL_PREVIEW_ROWS, written)
             # Header-less preview: the column names live (with positions) in the
@@ -235,19 +321,20 @@ async def execute_query(
                 f"{preview_count}-{row_word} preview only; "
                 "full results in results_file"
             )
+            reason = "wide" if too_wide else "tall" if too_tall else "large"
             logger.warning(
-                f"Query result spilled to disk: {written:,} rows, "
-                f"{len(inline_body):,} chars -> {spill_path}"
+                f"Query result spilled to disk ({reason}): {written:,} rows, "
+                f"{len(column_names)} cols, {len(inline_body):,} chars "
+                f"-> {spill_path}"
             )
             return build_text_response(
                 status="success", fields=fields, tsv=preview_tsv
             )
 
-        # Fits inline. ``inline_body`` is already in the right format: positional
-        # TSV for narrow results (cheap, a few columns are trivially readable) or
-        # labeled rows for wide ones (every value glued to its name, so the model
-        # never counts columns). No ``format`` marker is emitted -- a block of
-        # ``name=value`` pairs is self-evidently labeled.
+        # Fits inline: narrow (<=MAX_INLINE_COLUMNS) and within the char budget.
+        # ``inline_body`` is a compact positional TSV (header line + bare
+        # tab-separated rows) -- the only inline format. A few columns are
+        # trivially read by eye, so no per-cell labeling is needed.
         return build_text_response(status="success", fields=fields, tsv=inline_body)
 
     except ValueError as e:

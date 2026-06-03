@@ -136,34 +136,6 @@ def build_tsv_rows(rows: list[dict], names: list[str]) -> str:
     return "\n".join(tsv_row_line(row, names) for row in rows)
 
 
-def labeled_row_line(row: dict, names: list[str]) -> str:
-    """Render one row as tab-separated ``name=value`` pairs.
-
-    Unlike :func:`tsv_row_line` (bare positional values), every value is glued
-    to its own column name, so a reader never has to count columns to know what
-    a value belongs to. Values use the same :func:`format_value` /
-    :func:`tsv_escape` pipeline as the positional path, so NULL still renders as
-    :data:`TSV_NULL` and tabs/newlines stay escaped -- the row remains exactly
-    one physical line. Field order matches ``names`` for stable, scannable output.
-    """
-    return "\t".join(
-        f"{name}={tsv_escape(format_value(row.get(name)))}" for name in names
-    )
-
-
-def build_labeled_rows(rows: list[dict], names: list[str]) -> str:
-    """Build a labeled block: one ``name=value name=value ...`` line per row.
-
-    For wide inline results consumed directly by an LLM (no shell, no awk), this
-    is more legible than a positional TSV: there is no header line to cross-
-    reference and no column counting -- each value carries its name inline. Costs
-    more characters than positional TSV (names repeat per row), so it is reserved
-    for results wide enough that mis-association is the real risk
-    (see ``WIDE_RESULT_COL_THRESHOLD``).
-    """
-    return "\n".join(labeled_row_line(row, names) for row in rows)
-
-
 def write_tsv_file(file_path: str, rows: list[dict], names: list[str]) -> int:
     """Write rows to ``file_path`` as TSV (header + one line per row).
 

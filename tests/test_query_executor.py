@@ -1,6 +1,7 @@
 """Tests for server/tools/query_executor.py module."""
 
 import os
+import time
 from datetime import datetime
 from unittest.mock import Mock, patch
 
@@ -346,7 +347,7 @@ class TestExecuteQuery:
         Narrow results are trivially readable, so positional (header + rows) is
         the cheaper format and no labeling is applied.
         """
-        cols = ["id", "name", "city"]  # < WIDE_RESULT_COL_THRESHOLD
+        cols = ["id", "name", "city"]  # <= MAX_INLINE_COLUMNS
         data = [{"id": 1, "name": "Alice", "city": "NYC"}]
         mock_result = Mock()
         mock_result.data = data
@@ -361,24 +362,27 @@ class TestExecuteQuery:
             result = await execute_query(mock_connection, mock_cache, "SELECT * FROM t")
 
         header_part, _, tsv_part = result.partition("\n---\n")
-        # Positional format: no labeled-rows marker, header line present.
-        assert "format:" not in header_part
+        # Inline, positional: header line present, no spill fields.
+        assert "results_file" not in header_part
+        assert "spilled" not in header_part
         lines = tsv_part.split("\n")
         assert lines[0] == "id\tname\tcity"  # header line of column names
         assert lines[1] == "1\tAlice\tNYC"  # bare positional values
-        assert "id=" not in tsv_part  # not labeled
 
     @pytest.mark.asyncio
-    async def test_wide_inline_result_uses_labeled_rows(
-        self, mock_connection, mock_cache
+    async def test_wide_result_always_spills_even_when_tiny(
+        self, mock_connection, mock_cache, tmp_path
     ):
-        """A wide-but-short inline result switches to labeled name=value rows.
+        """A result with > MAX_INLINE_COLUMNS columns ALWAYS spills to a file,
+        regardless of how few rows or characters it is.
 
-        It fits inline (small total size) yet has enough columns that counting
-        to a position by eye is error-prone, so each value is glued to its name
-        and there is no positional header line to cross-reference.
+        There is no inline labeled (name=value) format anymore: if a result is
+        wide enough to be miscount-prone read by eye, it does not belong in
+        context at all. It spills so the agent reads it by column INDEX via the
+        column_index map. This case is deliberately tiny (one short row) to prove
+        column count alone -- not size -- triggers the spill.
         """
-        n = query_executor.WIDE_RESULT_COL_THRESHOLD  # exactly at the threshold
+        n = query_executor.MAX_INLINE_COLUMNS + 1  # one past the inline limit
         cols = [f"c{i}" for i in range(n)]
         row = {c: i for i, c in enumerate(cols)}
         mock_result = Mock()
@@ -388,20 +392,91 @@ class TestExecuteQuery:
         mock_result.query_id = "wide-id"
         mock_connection.execute_query.return_value = mock_result
 
-        with patch.object(
-            QueryValidator, "validate", return_value=(True, None, QueryType.SELECT)
+        with (
+            patch.object(
+                QueryValidator, "validate", return_value=(True, None, QueryType.SELECT)
+            ),
+            patch.object(query_executor, "SPILL_DIR", str(tmp_path)),
         ):
             result = await execute_query(mock_connection, mock_cache, "SELECT * FROM t")
 
         header_part, _, tsv_part = result.partition("\n---\n")
-        # No redundant format marker: a block of name=value pairs is
-        # self-evidently labeled, so we don't waste tokens describing it.
-        assert "format:" not in header_part
-        body_lines = tsv_part.split("\n")
-        # Exactly the data rows -- no positional header line.
-        assert len(body_lines) == 1
-        # Every value is glued to its own column name.
-        assert body_lines[0] == "\t".join(f"c{i}={i}" for i in range(n))
+        # It spilled despite being a single tiny row: width alone forced it.
+        assert "results_file" in header_part
+        assert "spilled" in header_part
+        # column_index is the sole column reference, 1-based for awk.
+        assert f"column_index: {query_executor.column_index_map(cols)}" in header_part
+        # Preview is a single DATA-ONLY positional row (no header, not labeled).
+        preview_lines = tsv_part.split("\n")
+        assert len(preview_lines) == 1
+        assert preview_lines[0] == "\t".join(str(i) for i in range(n))
+        assert "c0=" not in tsv_part  # no leftover labeled format
+
+    @pytest.mark.asyncio
+    async def test_narrow_tall_result_spills_on_row_count(
+        self, mock_connection, mock_cache, tmp_path
+    ):
+        """A NARROW result spills once it has more than MAX_INLINE_ROWS rows --
+        the row gate is independent of width and of total chars.
+
+        Two columns (LLM-friendly shape) with tiny cells, so the char budget is
+        nowhere near tripped: this proves ROW COUNT alone forces the spill. A
+        tall wall of rows is a reasoning hazard (the model miscounts aggregations
+        in context), so it belongs in a file the agent counts with awk/wc.
+        """
+        num_rows = query_executor.MAX_INLINE_ROWS + 1  # one past the row limit
+        data = [{"id": i, "data": "x"} for i in range(num_rows)]  # tiny cells
+        mock_result = Mock()
+        mock_result.data = data
+        mock_result.columns = ["id", "data"]  # narrow: 2 cols
+        mock_result.execution_time = 0.2
+        mock_result.query_id = "narrow-tall-id"
+        mock_connection.execute_query.return_value = mock_result
+
+        with (
+            patch.object(
+                QueryValidator, "validate", return_value=(True, None, QueryType.SELECT)
+            ),
+            patch.object(query_executor, "SPILL_DIR", str(tmp_path)),
+        ):
+            result = await execute_query(mock_connection, mock_cache, "SELECT * FROM t")
+
+        header_part, _, _ = result.partition("\n---\n")
+        # Total chars are trivially small; only the row count forced the spill.
+        assert "results_file" in header_part
+        assert "spilled" in header_part
+
+    @pytest.mark.asyncio
+    async def test_narrow_short_giant_cell_spills_on_char_backstop(
+        self, mock_connection, mock_cache, tmp_path
+    ):
+        """The char budget is a BACKSTOP for a narrow + short result that still
+        busts the size ceiling via one giant cell (e.g. a big JSON blob).
+
+        Shape gates pass (1 col, 1 row), so only INLINE_RESULT_CHAR_BUDGET can
+        catch it. This proves the char gate fires independently of row/column
+        count -- exactly the pathological case it exists for.
+        """
+        giant = "x" * (INLINE_RESULT_CHAR_BUDGET + 100)
+        data = [{"blob": giant}]  # 1 row, 1 col, but one huge value
+        mock_result = Mock()
+        mock_result.data = data
+        mock_result.columns = ["blob"]
+        mock_result.execution_time = 0.1
+        mock_result.query_id = "giant-cell-id"
+        mock_connection.execute_query.return_value = mock_result
+
+        with (
+            patch.object(
+                QueryValidator, "validate", return_value=(True, None, QueryType.SELECT)
+            ),
+            patch.object(query_executor, "SPILL_DIR", str(tmp_path)),
+        ):
+            result = await execute_query(mock_connection, mock_cache, "SELECT * FROM t")
+
+        header_part, _, _ = result.partition("\n---\n")
+        assert "results_file" in header_part
+        assert "spilled" in header_part
 
     @pytest.mark.asyncio
     async def test_execute_query_formats_values(self, mock_connection, mock_cache):
@@ -779,3 +854,139 @@ class TestGetQueryHistory:
             assert result["status"] == "error"
             assert "Database error" in result["message"]
             mock_logger.error.assert_called_once()
+
+
+class TestSweepSpillDir:
+    """Retention sweep for spilled result files (bounds SPILL_DIR by age+count)."""
+
+    def _make_spill(self, dir_path, name: str, age_seconds: float = 0.0) -> str:
+        """Create a query_*.tsv file with an mtime ``age_seconds`` in the past."""
+        path = os.path.join(str(dir_path), name)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("ID\tV\n1\tx\n")
+        if age_seconds:
+            past = time.time() - age_seconds
+            os.utime(path, (past, past))
+        return path
+
+    def test_age_pass_deletes_only_expired(self, tmp_path):
+        """Files older than the TTL are removed; fresh ones are kept."""
+        fresh = self._make_spill(tmp_path, "query_fresh.tsv", age_seconds=10)
+        stale = self._make_spill(tmp_path, "query_stale.tsv", age_seconds=9999)
+
+        with (
+            patch.object(query_executor, "SPILL_DIR", str(tmp_path)),
+            patch.object(query_executor, "SPILL_FILE_TTL_SECONDS", 100),
+            patch.object(query_executor, "SPILL_MAX_FILES", 1000),
+        ):
+            deleted = query_executor.sweep_spill_dir()
+
+        assert deleted == 1
+        assert os.path.exists(fresh)
+        assert not os.path.exists(stale)
+
+    def test_count_pass_is_fifo_oldest_first(self, tmp_path):
+        """When over the count cap, the OLDEST surviving files go first."""
+        # 5 fresh files (none expired), ages 5..1s; cap of 2 should keep the 2
+        # newest (ages 1s, 2s) and delete the 3 oldest (5s, 4s, 3s).
+        paths = {
+            age: self._make_spill(tmp_path, f"query_{age}.tsv", age_seconds=age)
+            for age in (1, 2, 3, 4, 5)
+        }
+
+        with (
+            patch.object(query_executor, "SPILL_DIR", str(tmp_path)),
+            patch.object(query_executor, "SPILL_FILE_TTL_SECONDS", 10_000),
+            patch.object(query_executor, "SPILL_MAX_FILES", 2),
+        ):
+            deleted = query_executor.sweep_spill_dir()
+
+        assert deleted == 3
+        assert os.path.exists(paths[1])  # newest kept
+        assert os.path.exists(paths[2])
+        assert not os.path.exists(paths[3])  # oldest evicted
+        assert not os.path.exists(paths[4])
+        assert not os.path.exists(paths[5])
+
+    def test_age_then_count_combined(self, tmp_path):
+        """Age pass runs first, then FIFO count on the survivors."""
+        expired = self._make_spill(tmp_path, "query_old.tsv", age_seconds=9999)
+        # 3 fresh; cap 2 -> after age removes `expired`, drop the oldest fresh.
+        f3 = self._make_spill(tmp_path, "query_f3.tsv", age_seconds=3)
+        f2 = self._make_spill(tmp_path, "query_f2.tsv", age_seconds=2)
+        f1 = self._make_spill(tmp_path, "query_f1.tsv", age_seconds=1)
+
+        with (
+            patch.object(query_executor, "SPILL_DIR", str(tmp_path)),
+            patch.object(query_executor, "SPILL_FILE_TTL_SECONDS", 100),
+            patch.object(query_executor, "SPILL_MAX_FILES", 2),
+        ):
+            deleted = query_executor.sweep_spill_dir()
+
+        assert deleted == 2  # expired + oldest-fresh
+        assert not os.path.exists(expired)
+        assert not os.path.exists(f3)  # oldest fresh, over the cap
+        assert os.path.exists(f2)
+        assert os.path.exists(f1)
+
+    def test_sweep_ignores_non_spill_files(self, tmp_path):
+        """The sweep only touches query_*.tsv -- never unrelated files."""
+        keep = os.path.join(str(tmp_path), "important.txt")
+        with open(keep, "w", encoding="utf-8") as f:
+            f.write("do not delete")
+        os.utime(keep, (time.time() - 9999, time.time() - 9999))  # very old
+
+        with (
+            patch.object(query_executor, "SPILL_DIR", str(tmp_path)),
+            patch.object(query_executor, "SPILL_FILE_TTL_SECONDS", 1),
+            patch.object(query_executor, "SPILL_MAX_FILES", 1),
+        ):
+            deleted = query_executor.sweep_spill_dir()
+
+        assert deleted == 0
+        assert os.path.exists(keep)  # untouched despite being old
+
+    def test_sweep_missing_dir_is_noop(self, tmp_path):
+        """A non-existent SPILL_DIR is handled gracefully (no error, 0 deleted)."""
+        missing = os.path.join(str(tmp_path), "does_not_exist")
+        with patch.object(query_executor, "SPILL_DIR", missing):
+            assert query_executor.sweep_spill_dir() == 0
+
+    @pytest.mark.asyncio
+    async def test_spill_sweeps_before_writing_and_keeps_new_file(self, tmp_path):
+        """A real spill prunes the dir first, and the new file survives the sweep.
+
+        With the cap at 1 and a pre-existing stale file, spilling must evict the
+        old file but always keep the just-written result.
+        """
+        stale = self._make_spill(tmp_path, "query_stale.tsv", age_seconds=9999)
+        data = [{"id": i, "data": "x"} for i in range(query_executor.MAX_INLINE_ROWS + 1)]
+        mock_result = Mock()
+        mock_result.data = data
+        mock_result.columns = ["id", "data"]
+        mock_result.execution_time = 0.1
+        mock_result.query_id = "sweep-on-spill-id"
+        mock_connection = Mock(spec=SnowflakeConnection)
+        mock_connection.execute_query.return_value = mock_result
+        mock_cache = Mock(spec=SchemaCache)
+        mock_cache.is_expired.return_value = False
+        mock_cache.is_empty.return_value = False
+
+        with (
+            patch.object(
+                QueryValidator, "validate", return_value=(True, None, QueryType.SELECT)
+            ),
+            patch.object(query_executor, "SPILL_DIR", str(tmp_path)),
+            patch.object(query_executor, "SPILL_FILE_TTL_SECONDS", 100),
+            patch.object(query_executor, "SPILL_MAX_FILES", 1),
+        ):
+            result = await execute_query(mock_connection, mock_cache, "SELECT * FROM t")
+
+        header_part, _, _ = result.partition("\n---\n")
+        new_path = next(
+            line.split(": ", 1)[1]
+            for line in header_part.splitlines()
+            if line.startswith("results_file: ")
+        )
+        assert not os.path.exists(stale)  # stale evicted by the pre-write sweep
+        assert os.path.exists(new_path)  # the new spill file survives
