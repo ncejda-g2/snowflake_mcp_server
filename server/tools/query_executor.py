@@ -16,6 +16,8 @@ from server.constants import (
     SPILL_DIR,
     SPILL_FILE_TTL_SECONDS,
     SPILL_MAX_FILES,
+    SPILL_MAX_TOTAL_BYTES,
+    SPILL_MIN_AGE_SECONDS,
     SPILL_PREVIEW_ROWS,
 )
 from server.schema_cache import SchemaCache
@@ -58,16 +60,28 @@ _SPILL_GLOB = "query_*.tsv"
 
 
 def sweep_spill_dir() -> int:
-    """Bound SPILL_DIR by age then by count; return the number of files deleted.
+    """Bound SPILL_DIR by age, count, then total bytes; return files deleted.
 
-    Enforces the retention policy for spilled result files (see constants):
-      1. AGE  -- delete any spill file whose mtime is older than
-         SPILL_FILE_TTL_SECONDS.
-      2. COUNT -- if more than SPILL_MAX_FILES survive the age pass, delete the
-         OLDEST first (FIFO by mtime) until at most SPILL_MAX_FILES remain.
+    Enforces the retention policy for spilled result files (see constants),
+    applying the passes in order so each narrows the survivors the next sees:
+      1. AGE   -- delete any spill file older than SPILL_FILE_TTL_SECONDS.
+      2. COUNT -- if more than SPILL_MAX_FILES survive, delete the OLDEST first
+         (FIFO by mtime) until at most SPILL_MAX_FILES remain.
+      3. BYTES -- if the survivors' combined size still exceeds
+         SPILL_MAX_TOTAL_BYTES, delete the OLDEST first (FIFO) until at/under the
+         budget. The real disk guard; COUNT cannot bound bytes (files vary wildly).
+
+    MIN-AGE GRACE: the two FIFO passes (COUNT, BYTES) never evict a file younger
+    than SPILL_MIN_AGE_SECONDS. Because queries run sequentially, several spills
+    in one agent turn each sweep before their own write; without this window a
+    later spill's sweep could reclaim an earlier spill's file before the agent
+    reads it. The AGE pass ignores the grace -- a file past its TTL is stale by
+    definition. (A file can thus survive even when over the byte budget if all
+    survivors are within the grace window; the budget is best-effort, never at the
+    cost of a just-returned result.)
 
     Best-effort and race-safe: the directory may not exist yet (nothing to do),
-    files may be deleted by another sweep between listing and unlinking, and a
+    files may be deleted by another process between listing and unlinking, and a
     single unlink failure (e.g. permissions) must not abort the rest. Called on
     server startup and before every new spill, so cleanup needs no scheduler or
     background thread.
@@ -77,13 +91,15 @@ def sweep_spill_dir() -> int:
     except OSError:
         return 0
 
-    # Snapshot (path, mtime); skip any file that vanished between glob and stat.
-    entries: list[tuple[str, float]] = []
+    # Snapshot (path, mtime, size); skip any file that vanished between glob and
+    # stat. One stat() per file via os.stat covers both mtime and size.
+    entries: list[tuple[str, float, int]] = []
     for path in paths:
         try:
-            entries.append((path, os.path.getmtime(path)))
+            st = os.stat(path)
         except OSError:
             continue
+        entries.append((path, st.st_mtime, st.st_size))
 
     now = time.time()
     deleted = 0
@@ -96,20 +112,47 @@ def sweep_spill_dir() -> int:
         except OSError:
             pass  # already gone, or not ours to remove -- ignore
 
-    # 1. Age pass.
-    survivors: list[tuple[str, float]] = []
-    for path, mtime in entries:
+    # 1. AGE pass -- ignores the min-age grace (a file past TTL is stale).
+    survivors: list[tuple[str, float, int]] = []
+    for entry in entries:
+        path, mtime, _size = entry
         if now - mtime > SPILL_FILE_TTL_SECONDS:
             _unlink(path)
         else:
-            survivors.append((path, mtime))
+            survivors.append(entry)
 
-    # 2. Count pass (FIFO: oldest mtime first).
-    if len(survivors) > SPILL_MAX_FILES:
-        survivors.sort(key=lambda e: e[1])  # oldest first
-        overflow = len(survivors) - SPILL_MAX_FILES
-        for path, _mtime in survivors[:overflow]:
-            _unlink(path)
+    # Oldest-first ordering drives both FIFO passes below.
+    survivors.sort(key=lambda e: e[1])
+
+    # A file is evictable by a FIFO pass only once it is older than the grace
+    # window -- a just-returned result must outlive the turn that created it.
+    def _evictable(entry: tuple[str, float, int]) -> bool:
+        return now - entry[1] > SPILL_MIN_AGE_SECONDS
+
+    # 2. COUNT pass (FIFO, oldest first, grace-protected). Evict only enough of
+    # the eligible oldest files to bring the count to the cap.
+    overflow = len(survivors) - SPILL_MAX_FILES
+    if overflow > 0:
+        remaining = []
+        for entry in survivors:
+            if overflow > 0 and _evictable(entry):
+                _unlink(entry[0])
+                overflow -= 1
+            else:
+                remaining.append(entry)
+        survivors = remaining
+
+    # 3. BYTES pass (FIFO, oldest first, grace-protected). Evict eligible oldest
+    # files until the survivors' combined size is within budget (or only
+    # grace-protected files remain, in which case we stop and tolerate overage).
+    total = sum(size for _p, _m, size in survivors)
+    if total > SPILL_MAX_TOTAL_BYTES:
+        for entry in survivors:
+            if total <= SPILL_MAX_TOTAL_BYTES:
+                break
+            if _evictable(entry):
+                _unlink(entry[0])
+                total -= entry[2]
 
     if deleted:
         logger.info(f"Spill cleanup removed {deleted} stale file(s) from {SPILL_DIR}")
@@ -126,8 +169,11 @@ def _spill_to_disk(
     spill files first so the directory stays bounded under almost-always-spill.
     """
     os.makedirs(SPILL_DIR, exist_ok=True)
-    # Prune BEFORE writing so the new file always survives its own sweep and the
-    # cap is enforced at the moment the directory grows.
+    # Prune BEFORE writing so the cap is enforced at the moment the directory
+    # grows. The new file is never threatened by this sweep (it does not exist
+    # yet) nor by the NEXT one (the min-age grace protects it for
+    # SPILL_MIN_AGE_SECONDS), so it always survives long enough for the agent to
+    # read the path we return.
     sweep_spill_dir()
     file_path = os.path.join(SPILL_DIR, f"query_{uuid.uuid4().hex}.tsv")
     written = write_tsv_file(file_path, rows, names)

@@ -1,5 +1,7 @@
 """Tests for server/constants.py module."""
 
+import pytest
+
 from server import constants
 
 
@@ -9,6 +11,42 @@ def test_spill_configuration():
     assert constants.SPILL_DIR  # non-empty path
     assert isinstance(constants.SPILL_PREVIEW_ROWS, int)
     assert constants.SPILL_PREVIEW_ROWS > 0
+
+
+def test_spill_retention_constants():
+    """Retention limits exist, are positive ints, with the agreed defaults."""
+    assert constants.SPILL_FILE_TTL_SECONDS == 7200  # 2h
+    assert constants.SPILL_MAX_FILES == 20
+    assert constants.SPILL_MAX_TOTAL_BYTES == 10_000_000_000  # 10 GB
+    assert constants.SPILL_MIN_AGE_SECONDS == 60
+    for val in (
+        constants.SPILL_FILE_TTL_SECONDS,
+        constants.SPILL_MAX_FILES,
+        constants.SPILL_MAX_TOTAL_BYTES,
+        constants.SPILL_MIN_AGE_SECONDS,
+    ):
+        assert isinstance(val, int) and val > 0
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        (None, 42),  # unset -> default
+        ("", 42),  # empty -> default
+        ("notanumber", 42),  # non-numeric -> default
+        ("0", 42),  # non-positive -> default (never disable cleanup)
+        ("-5", 42),  # negative -> default
+        ("100", 100),  # valid positive -> used
+    ],
+)
+def test_env_int_fallbacks(monkeypatch, raw, expected):
+    """A bad/missing/non-positive env value can never silently disable a limit."""
+    var = "SNOWFLAKE_MCP_TEST_ENV_INT"
+    if raw is None:
+        monkeypatch.delenv(var, raising=False)
+    else:
+        monkeypatch.setenv(var, raw)
+    assert constants._env_int(var, 42) == expected
 
 
 def test_mcp_token_limits():

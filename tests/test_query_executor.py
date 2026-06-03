@@ -859,11 +859,16 @@ class TestGetQueryHistory:
 class TestSweepSpillDir:
     """Retention sweep for spilled result files (bounds SPILL_DIR by age+count)."""
 
-    def _make_spill(self, dir_path, name: str, age_seconds: float = 0.0) -> str:
-        """Create a query_*.tsv file with an mtime ``age_seconds`` in the past."""
+    def _make_spill(
+        self, dir_path, name: str, age_seconds: float = 0.0, size_bytes: int = 0
+    ) -> str:
+        """Create a query_*.tsv file with a given mtime-age and (optional) size."""
         path = os.path.join(str(dir_path), name)
         with open(path, "w", encoding="utf-8") as f:
-            f.write("ID\tV\n1\tx\n")
+            if size_bytes:
+                f.write("x" * size_bytes)
+            else:
+                f.write("ID\tV\n1\tx\n")
         if age_seconds:
             past = time.time() - age_seconds
             os.utime(path, (past, past))
@@ -898,6 +903,9 @@ class TestSweepSpillDir:
             patch.object(query_executor, "SPILL_DIR", str(tmp_path)),
             patch.object(query_executor, "SPILL_FILE_TTL_SECONDS", 10_000),
             patch.object(query_executor, "SPILL_MAX_FILES", 2),
+            # This test is about FIFO ordering, not the grace window: disable the
+            # min-age guard so the second-old files are all eligible to evict.
+            patch.object(query_executor, "SPILL_MIN_AGE_SECONDS", 0),
         ):
             deleted = query_executor.sweep_spill_dir()
 
@@ -920,6 +928,8 @@ class TestSweepSpillDir:
             patch.object(query_executor, "SPILL_DIR", str(tmp_path)),
             patch.object(query_executor, "SPILL_FILE_TTL_SECONDS", 100),
             patch.object(query_executor, "SPILL_MAX_FILES", 2),
+            # Ordering test, not a grace test: let the second-old files evict.
+            patch.object(query_executor, "SPILL_MIN_AGE_SECONDS", 0),
         ):
             deleted = query_executor.sweep_spill_dir()
 
@@ -990,3 +1000,114 @@ class TestSweepSpillDir:
         )
         assert not os.path.exists(stale)  # stale evicted by the pre-write sweep
         assert os.path.exists(new_path)  # the new spill file survives
+
+    def test_byte_pass_is_fifo_until_under_budget(self, tmp_path):
+        """Over the byte budget, evict OLDEST first until combined size fits."""
+        # 4 files of 100 bytes each = 400 total; budget 250 -> must drop the 2
+        # oldest (ages 4s, 3s) to bring 4 survivors -> 2 (200 bytes, under 250).
+        old2 = self._make_spill(tmp_path, "query_o4.tsv", age_seconds=4, size_bytes=100)
+        old1 = self._make_spill(tmp_path, "query_o3.tsv", age_seconds=3, size_bytes=100)
+        new2 = self._make_spill(tmp_path, "query_n2.tsv", age_seconds=2, size_bytes=100)
+        new1 = self._make_spill(tmp_path, "query_n1.tsv", age_seconds=1, size_bytes=100)
+
+        with (
+            patch.object(query_executor, "SPILL_DIR", str(tmp_path)),
+            patch.object(query_executor, "SPILL_FILE_TTL_SECONDS", 10_000),
+            patch.object(query_executor, "SPILL_MAX_FILES", 1000),  # count inert
+            patch.object(query_executor, "SPILL_MAX_TOTAL_BYTES", 250),
+            patch.object(query_executor, "SPILL_MIN_AGE_SECONDS", 0),  # grace inert
+        ):
+            deleted = query_executor.sweep_spill_dir()
+
+        assert deleted == 2
+        assert not os.path.exists(old2)  # oldest evicted first
+        assert not os.path.exists(old1)
+        assert os.path.exists(new2)  # newest kept once under budget
+        assert os.path.exists(new1)
+
+    def test_byte_pass_respects_min_age_grace(self, tmp_path):
+        """A fresh file is never byte-evicted, even when over budget."""
+        # Both files are 100 bytes (200 > 150 budget) but younger than the 60s
+        # grace, so neither may be evicted -- we tolerate the overage rather than
+        # reclaim a just-returned result.
+        f1 = self._make_spill(tmp_path, "query_a.tsv", age_seconds=2, size_bytes=100)
+        f2 = self._make_spill(tmp_path, "query_b.tsv", age_seconds=1, size_bytes=100)
+
+        with (
+            patch.object(query_executor, "SPILL_DIR", str(tmp_path)),
+            patch.object(query_executor, "SPILL_FILE_TTL_SECONDS", 10_000),
+            patch.object(query_executor, "SPILL_MAX_FILES", 1000),
+            patch.object(query_executor, "SPILL_MAX_TOTAL_BYTES", 150),
+            patch.object(query_executor, "SPILL_MIN_AGE_SECONDS", 60),
+        ):
+            deleted = query_executor.sweep_spill_dir()
+
+        assert deleted == 0  # both protected by grace despite being over budget
+        assert os.path.exists(f1)
+        assert os.path.exists(f2)
+
+    def test_count_pass_respects_min_age_grace(self, tmp_path):
+        """A fresh file is never count-evicted, even over the count cap."""
+        # 3 fresh files, cap 1; all younger than the grace -> none evictable.
+        f3 = self._make_spill(tmp_path, "query_c.tsv", age_seconds=3)
+        f2 = self._make_spill(tmp_path, "query_b.tsv", age_seconds=2)
+        f1 = self._make_spill(tmp_path, "query_a.tsv", age_seconds=1)
+
+        with (
+            patch.object(query_executor, "SPILL_DIR", str(tmp_path)),
+            patch.object(query_executor, "SPILL_FILE_TTL_SECONDS", 10_000),
+            patch.object(query_executor, "SPILL_MAX_FILES", 1),
+            patch.object(query_executor, "SPILL_MIN_AGE_SECONDS", 60),
+        ):
+            deleted = query_executor.sweep_spill_dir()
+
+        assert deleted == 0  # over cap, but all within grace
+        assert os.path.exists(f1)
+        assert os.path.exists(f2)
+        assert os.path.exists(f3)
+
+    def test_grace_protects_recent_but_evicts_aged_over_budget(self, tmp_path):
+        """Byte pass evicts only the grace-aged file, keeps the fresh one."""
+        # aged (90s, evictable) + fresh (5s, protected), each 100 bytes, budget
+        # 150. Only the aged file may go -> survivors = fresh (100 <= 150).
+        aged = self._make_spill(tmp_path, "query_aged.tsv", age_seconds=90, size_bytes=100)
+        fresh = self._make_spill(tmp_path, "query_fresh.tsv", age_seconds=5, size_bytes=100)
+
+        with (
+            patch.object(query_executor, "SPILL_DIR", str(tmp_path)),
+            patch.object(query_executor, "SPILL_FILE_TTL_SECONDS", 10_000),
+            patch.object(query_executor, "SPILL_MAX_FILES", 1000),
+            patch.object(query_executor, "SPILL_MAX_TOTAL_BYTES", 150),
+            patch.object(query_executor, "SPILL_MIN_AGE_SECONDS", 60),
+        ):
+            deleted = query_executor.sweep_spill_dir()
+
+        assert deleted == 1
+        assert not os.path.exists(aged)  # past grace, over budget -> evicted
+        assert os.path.exists(fresh)  # within grace -> protected
+
+    def test_pass_order_age_then_count_then_bytes(self, tmp_path):
+        """All three passes compose: age first, then count, then bytes."""
+        # expired (TTL) + 3 aged files of 100 bytes. cap 2 drops 1 (oldest aged),
+        # then bytes (budget 150) drops 1 more -> 1 survivor under budget.
+        expired = self._make_spill(
+            tmp_path, "query_exp.tsv", age_seconds=99999, size_bytes=100
+        )
+        a3 = self._make_spill(tmp_path, "query_a3.tsv", age_seconds=300, size_bytes=100)
+        a2 = self._make_spill(tmp_path, "query_a2.tsv", age_seconds=200, size_bytes=100)
+        a1 = self._make_spill(tmp_path, "query_a1.tsv", age_seconds=100, size_bytes=100)
+
+        with (
+            patch.object(query_executor, "SPILL_DIR", str(tmp_path)),
+            patch.object(query_executor, "SPILL_FILE_TTL_SECONDS", 10_000),
+            patch.object(query_executor, "SPILL_MAX_FILES", 2),
+            patch.object(query_executor, "SPILL_MAX_TOTAL_BYTES", 150),
+            patch.object(query_executor, "SPILL_MIN_AGE_SECONDS", 60),
+        ):
+            deleted = query_executor.sweep_spill_dir()
+
+        assert deleted == 3  # expired(age) + a3(count) + a2(bytes)
+        assert not os.path.exists(expired)
+        assert not os.path.exists(a3)  # oldest survivor, dropped by count cap
+        assert not os.path.exists(a2)  # next oldest, dropped by byte budget
+        assert os.path.exists(a1)  # newest, survives (100 <= 150)

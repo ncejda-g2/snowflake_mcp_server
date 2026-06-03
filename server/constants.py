@@ -33,16 +33,48 @@ def _env_int(name: str, default: int) -> int:
 # query drops a .tsv in SPILL_DIR, so the directory MUST be bounded or it leaks
 # disk (and leaves query data in tmp indefinitely). Retention is enforced by
 # sweep_spill_dir() both on server startup and before every new spill, applying
-# the same two limits:
-#   * AGE  -- delete files older than SPILL_FILE_TTL_SECONDS. The agent reads a
-#             spilled file within the same turn (seconds), so the TTL is purely a
-#             safety margin for an abandoned/paused task; 2h is generous.
-#   * COUNT -- after the TTL pass, if more than SPILL_MAX_FILES remain, delete
-#             the OLDEST first (FIFO) until at/under the cap. Bounds a burst that
-#             creates many files well within the TTL window.
-# Both are env-overridable for deployments with different disk/retention needs.
+# these passes IN ORDER (each narrows the survivors the next pass sees):
+#   * AGE   -- delete files older than SPILL_FILE_TTL_SECONDS. The agent reads a
+#              spilled file within the same turn (seconds), so the TTL is purely
+#              a safety margin for an abandoned/paused task; 2h is generous.
+#   * COUNT -- if more than SPILL_MAX_FILES remain, delete the OLDEST first (FIFO)
+#              until at/under the cap. This is the DOMINANT sweeper in normal
+#              operation: a session spills steadily and the count cap is what
+#              keeps the dir small turn-to-turn.
+#   * BYTES -- if the survivors' combined size still exceeds SPILL_MAX_TOTAL_BYTES,
+#              delete the OLDEST first (FIFO) until at/under the budget. COUNT is a
+#              poor proxy for disk use (20 files could each be gigabytes), so this
+#              total-byte ceiling is the real disk-blowout guard. It is a BACKSTOP,
+#              not the primary force: set high enough that it almost never fires,
+#              so COUNT/AGE dominate and BYTES only catches the pathological case.
+# All limits are env-overridable for deployments with different disk/retention
+# needs.
+#
+# MIN-AGE GRACE (the correctness guard): both FIFO passes (COUNT and BYTES) skip
+# any file younger than SPILL_MIN_AGE_SECONDS, so a result we just handed back to
+# the agent is never reclaimed before the agent can read it. This is necessary
+# because queries run SEQUENTIALLY (single blocking connection on one event loop
+# -- verified empirically), so within one agent turn several queries can each run
+# their pre-write sweep BEFORE the agent gets control back to read any returned
+# path. Without the grace window, a later query's sweep could evict an earlier
+# query's still-unread file. The grace is a pragmatic time bound, not a proof: it
+# protects the common pattern (one big query, then small ones, all in a turn) but
+# a deliberately adversarial case -- two multi-minute giant queries back to back
+# where the second outlasts the grace -- can still lose the first. We accept that
+# corner rather than build turn-boundary/read-state tracking the tool layer has no
+# signal for; a high byte cap makes it nearly impossible to hit in practice.
+#
+# Deliberately NO per-file byte cap: a spill file's contract is that it holds the
+# COMPLETE result (the agent greps/awks it for the real answer), so truncating an
+# individual file to fit a budget would silently corrupt that answer. A single
+# result is always written in full -- even one larger than the whole budget --
+# and the byte pass reclaims it on a LATER sweep (never serving a partial result).
 SPILL_FILE_TTL_SECONDS = _env_int("SNOWFLAKE_MCP_SPILL_TTL_SECONDS", 7200)  # 2h
 SPILL_MAX_FILES = _env_int("SNOWFLAKE_MCP_SPILL_MAX_FILES", 20)
+SPILL_MAX_TOTAL_BYTES = _env_int(
+    "SNOWFLAKE_MCP_SPILL_MAX_TOTAL_BYTES", 10_000_000_000
+)  # 10 GB -- backstop, not the primary sweeper
+SPILL_MIN_AGE_SECONDS = _env_int("SNOWFLAKE_MCP_SPILL_MIN_AGE_SECONDS", 60)
 
 # Number of data rows included in the inline preview when spilling to disk.
 #
