@@ -583,8 +583,13 @@ class TestSweepSpillDir:
     def _make_spill(
         self, dir_path, name: str, age_seconds: float = 0.0, size_bytes: int = 0
     ) -> str:
-        """Create a query_*.tsv file with a given mtime-age and (optional) size."""
-        path = os.path.join(str(dir_path), name)
+        """Create a spill file matching the sweep glob, given an age and size.
+
+        ``name`` is treated as a per-test suffix; the shared ``spill_`` prefix is
+        prepended so the file matches the generalized ``spill_*.tsv`` glob the
+        sweep covers (every route's spills share this one namespace).
+        """
+        path = os.path.join(str(dir_path), f"{query_executor._SPILL_PREFIX}{name}")
         with open(path, "w", encoding="utf-8") as f:
             if size_bytes:
                 f.write("x" * size_bytes)

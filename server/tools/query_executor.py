@@ -51,10 +51,16 @@ __all__ = [
 # server.serialization now).
 _build_tsv = build_tsv
 
-# Filename pattern for spilled result files. The glob is intentionally narrow so
-# the cleanup sweep only ever touches files THIS tool created -- never anything
-# else a user might place in (or that shares) the temp dir.
-_SPILL_GLOB = "query_*.tsv"
+# Shared spill-file namespace. EVERY route that auto-spills a result to SPILL_DIR
+# uses the ``spill_`` prefix (e.g. ``spill_query_<uuid>.tsv``,
+# ``spill_find_<uuid>.tsv``), so the single cleanup sweep below covers them all
+# under one retention policy and one bounded directory. The glob is still narrow
+# enough that the sweep only ever touches files WE created -- never anything else
+# a user might place in (or that shares) the temp dir. Adding spilling to a new
+# route needs no change here: it just spills with its own infix via the shared
+# prefix and inherits cleanup for free.
+_SPILL_PREFIX = "spill_"
+_SPILL_GLOB = f"{_SPILL_PREFIX}*.tsv"
 
 
 def sweep_spill_dir() -> int:
@@ -157,12 +163,20 @@ def sweep_spill_dir() -> int:
     return deleted
 
 
-def _spill_to_disk(rows: list[dict], names: list[str]) -> tuple[str, int]:
+def spill_rows_to_disk(
+    rows: list[dict], names: list[str], infix: str = "query"
+) -> tuple[str, int]:
     """Write the full result to a temp TSV file and return (path, rows_written).
 
     Same TSV format/escaping/NULL sentinel as the inline payload, so the agent
     can grep/awk/wc the file exactly as it would the inline block. Sweeps stale
     spill files first so the directory stays bounded under almost-always-spill.
+
+    ``infix`` distinguishes the spilling route in the filename
+    (``spill_<infix>_<uuid>.tsv``) for at-a-glance provenance; it does NOT affect
+    cleanup, because every spill shares the ``spill_`` prefix the single sweep
+    globs. This is the one shared spill primitive every route calls, so cleanup,
+    retention, and the bounded directory are guaranteed identical across routes.
     """
     os.makedirs(SPILL_DIR, exist_ok=True)
     # Prune BEFORE writing so the cap is enforced at the moment the directory
@@ -171,7 +185,9 @@ def _spill_to_disk(rows: list[dict], names: list[str]) -> tuple[str, int]:
     # SPILL_MIN_AGE_SECONDS), so it always survives long enough for the agent to
     # read the path we return.
     sweep_spill_dir()
-    file_path = os.path.join(SPILL_DIR, f"query_{uuid.uuid4().hex}.tsv")
+    file_path = os.path.join(
+        SPILL_DIR, f"{_SPILL_PREFIX}{infix}_{uuid.uuid4().hex}.tsv"
+    )
     written = write_tsv_file(file_path, rows, names)
     return file_path, written
 
@@ -335,7 +351,9 @@ async def execute_query(
         # the answer, so a single row (column shape + value formatting) is enough
         # for the agent to write a correct grep/awk and avoids wasting context.
         if too_wide or too_tall or too_large:
-            spill_path, written = _spill_to_disk(result.data, column_names)
+            spill_path, written = spill_rows_to_disk(
+                result.data, column_names, infix="query"
+            )
             preview_count = min(SPILL_PREVIEW_ROWS, written)
             # Header-less preview: the column names live (with positions) in the
             # column_index map, so re-emitting them as a TSV header line here

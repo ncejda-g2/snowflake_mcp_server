@@ -202,10 +202,21 @@ async def show_tables_tool(
     description="""Search for tables by keyword across ALL databases.
 
     USE THIS WHEN: You don't know where a table is, but know part of its name or purpose.
-    Searches both table names AND table comments.
+    Matches against both table names AND table comments (so a cryptically-named
+    table is still found when its comment mentions the term).
 
-    RETURNS: Flat list of matching tables
-    - [{database, schema, table, type, full_name, columns, comment}, ...]
+    RETURNS (small result): flat list of matches
+    - [{database, schema, table, type, full_name, columns}, ...]
+      Note: the comment is NOT returned (it is the one unbounded field and can be
+      a multi-KB doc-block). To read a specific table's comment, use describe_table.
+
+    RETURNS (broad result): when too many tables match to return inline, the
+    COMPLETE result is written to a temp `.tsv` file and the response is instead a
+    compact summary built to help you NARROW: `total_hits`, `results_file`, a
+    bounded `top_groups` breakdown of the top database.schema clusters (with a
+    `(+X more groups, Y hits)` tail marker), and a `spilled` hint. To narrow, call
+    show_tables with database_pattern/schema_pattern from top_groups and/or a more
+    specific table_pattern -- don't blindly re-search.
 
     HOW IT WORKS:
     - Auto-refreshes cache if expired/empty (requires Snowflake auth on first use)

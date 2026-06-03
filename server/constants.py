@@ -136,6 +136,41 @@ MCP_CHAR_LIMIT_ESTIMATE = (
     MCP_TOKEN_LIMIT_ESTIMATE * APPROX_CHARS_PER_TOKEN
 )  # ~100,000 characters -- the transport ceiling, NOT the inline budget below.
 
+# find_tables inline budget + breakdown size.
+#
+# find_tables searches table names AND comments across the WHOLE cache, so a
+# generic term ("product", "survey", "data") can match thousands of tables. The
+# old behavior dumped every hit as one JSON blob -- the single worst offender for
+# output tokens (observed 66 KB+). But unlike execute_query, the agent almost
+# never wants to READ all those hits: a flood of matches means "term too broad",
+# and the agent's next move is to narrow. So when the serialized result exceeds
+# this budget, find_tables spills the COMPLETE result to a .tsv file and returns
+# instead a compact summary built to drive that narrowing decision: the total hit
+# count, a BOUNDED top-N breakdown of where the hits cluster, and the file path.
+#
+# The budget is measured against the SAME positional TSV bytes we would spill, so
+# it gates on the real on-the-wire size, not an estimate. It is independent from
+# INLINE_RESULT_CHAR_BUDGET (execute_query's giant-single-cell backstop) because
+# the two gate unrelated things: that one catches one pathologically huge cell in
+# an otherwise tiny result; this one catches a flood of many small rows.
+FIND_TABLES_INLINE_CHAR_BUDGET = _env_int(
+    "SNOWFLAKE_MCP_FIND_TABLES_CHAR_BUDGET", 4_000
+)
+
+# Number of (database.schema) groups in the spilled-find_tables breakdown.
+#
+# When find_tables spills, the inline summary reports the top-N database.schema
+# groups by hit count -- the single most actionable narrowing signal, because it
+# maps directly onto show_tables's database_pattern + schema_pattern filters. N
+# is a HARD CAP, not a function of how many groups matched: a term hitting 5
+# groups or 5,000 groups both yield at most N lines, so this summary can NEVER
+# reblow the token budget regardless of how sprawling the account is (some orgs
+# have thousands of databases). Everything outside the top-N is collapsed into a
+# single "(+X more groups, Y hits)" tail marker so the agent can still tell a
+# concentrated result (scope to the top group) from a diffuse one (narrow the
+# keyword) -- the count alone would hide that distinction.
+FIND_TABLES_TOP_GROUPS = _env_int("SNOWFLAKE_MCP_FIND_TABLES_TOP_GROUPS", 5)
+
 # Inline char budget: a BACKSTOP gate, not the primary one.
 #
 # Shape is governed by the two gates above: a result is inline only if it is
