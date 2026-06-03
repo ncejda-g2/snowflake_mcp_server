@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 First stable release. Token-efficiency pass and a memory-leak fix.
 
+### Added
+- **CSV export** in `execute_query_to_file`: a `.csv` output path now writes RFC 4180 comma-delimited CSV (proper quoting; SQL NULL → empty field) instead of forcing `.tsv`. Any other/absent extension still defaults to TSV (the agent's native format). Also fixes the prior `.csv` → `.csv.tsv` double-extension behavior.
+
 ### Removed (breaking)
 - **`validate_query_without_execution` tool** — removed. The agent can generate SQL for manual review on its own; the tool added a tool slot, ~305 description tokens, and a verbose response payload for near-zero unique capability.
 - **`get_query_history` tool** — removed. It only exposed an in-process, in-memory log (not Snowflake's `QUERY_HISTORY`), lost on restart and redundant with the agent's own conversation context. (#11)

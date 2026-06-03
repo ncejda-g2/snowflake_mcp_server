@@ -8,13 +8,17 @@ and every on-disk file.
 from datetime import datetime
 
 from server.serialization import (
+    CSV_EXTENSION,
     TSV_EXTENSION,
     TSV_NULL,
     build_tsv,
     build_tsv_rows,
     column_index_map,
     column_names,
+    csv_cell,
     format_value,
+    open_export_writer,
+    resolve_export_extension,
     tsv_escape,
     write_tsv_file,
 )
@@ -113,3 +117,55 @@ def test_write_tsv_file_roundtrip(tmp_path):
 
 def test_tsv_extension_constant():
     assert TSV_EXTENSION == ".tsv"
+
+
+# --- CSV export ----------------------------------------------------------
+
+
+def test_csv_extension_constant():
+    assert CSV_EXTENSION == ".csv"
+
+
+def test_csv_cell_null_and_empty_both_render_empty():
+    # CSV has no NULL sentinel: NULL and "" are indistinguishable (empty field).
+    assert csv_cell(None) == ""
+    assert csv_cell("") == ""
+
+
+def test_csv_cell_normalizes_datetime_and_bytes():
+    assert csv_cell(datetime(2024, 1, 2, 3, 4, 5)) == "2024-01-02T03:04:05"
+    assert csv_cell(b"hi") == "hi"
+    assert csv_cell(42) == "42"
+
+
+def test_resolve_export_extension_defaults_to_tsv():
+    assert resolve_export_extension("/tmp/out") == ".tsv"
+    assert resolve_export_extension("/tmp/out.json") == ".tsv"  # unrecognized
+    assert resolve_export_extension("/tmp/out.tsv") == ".tsv"
+
+
+def test_resolve_export_extension_detects_csv_case_insensitively():
+    assert resolve_export_extension("/tmp/out.csv") == ".csv"
+    assert resolve_export_extension("/tmp/out.CSV") == ".csv"
+
+
+def test_open_export_writer_csv_quotes_and_roundtrips(tmp_path):
+    import csv
+
+    path = tmp_path / "x.csv"
+    with open(path, "w", encoding="utf-8", newline="") as f:
+        writer = open_export_writer(f, ["id", "name"], ".csv")
+        writer.write_row({"id": 1, "name": "Smith, Bob"})  # comma -> quoted
+        writer.write_row({"id": 2, "name": None})  # NULL -> empty
+    rows = list(csv.reader(path.read_text(encoding="utf-8").splitlines()))
+    assert rows == [["id", "name"], ["1", "Smith, Bob"], ["2", ""]]
+
+
+def test_open_export_writer_tsv_matches_inline_format(tmp_path):
+    path = tmp_path / "x.tsv"
+    with open(path, "w", encoding="utf-8", newline="") as f:
+        writer = open_export_writer(f, ["id", "v"], ".tsv")
+        writer.write_row({"id": 1, "v": None})
+        writer.write_row({"id": 2, "v": ""})
+    lines = path.read_text(encoding="utf-8").splitlines()
+    assert lines == ["id\tv", f"1\t{TSV_NULL}", "2\t"]

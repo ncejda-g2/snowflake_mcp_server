@@ -349,22 +349,23 @@ async def execute_query_tool(
 # Tool: Execute Query to File
 @mcp.tool(
     name="execute_query_to_file",
-    description="""Writes read-only query results to a .tsv file at a path you choose.
+    description="""Writes read-only query results to a file at a path you choose.
 
     Use when the result needs to land at a specific path -- to share or persist.
-    Same TSV format as execute_query: tab-delimited, header line, NULL = `\\N`,
-    escaped, one row per line.
+    Format follows the extension: `.csv` writes CSV (NULL = empty field);
+    anything else writes TSV (same as execute_query: tab-delimited, NULL = `\\N`).
 
     Parameters:
     - sql: read-only SQL (SELECT, SHOW, DESCRIBE, WITH)
-    - file_path: output path (absolute recommended; `.tsv` appended if missing)
+    - file_path: output path (absolute recommended; end with `.csv` for CSV,
+      else `.tsv` is used/appended)
     - database: optional database context
     - schema: optional schema context
     - timeout_seconds: query timeout (default 300, max 3600)
 
     Requires a populated schema cache. Will not overwrite an existing file.
 
-    Example: execute_query_to_file("SELECT * FROM large_table", "/tmp/export.tsv")
+    Example: execute_query_to_file("SELECT * FROM t", "/tmp/export.csv")
     """,
 )
 async def execute_query_to_file_tool(

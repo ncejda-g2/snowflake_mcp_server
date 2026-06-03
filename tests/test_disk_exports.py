@@ -115,3 +115,69 @@ class TestExecuteQueryToFile:
             )
         assert result["status"] == "error"
         assert "already exists" in result["message"]
+
+    @pytest.mark.asyncio
+    async def test_csv_extension_writes_csv(self, tmp_path, mock_cache):
+        """A `.csv` path exports comma-delimited CSV with RFC 4180 quoting."""
+        conn = Mock(spec=SnowflakeConnection)
+        conn.execute_query_stream.return_value = iter(
+            [
+                [{"id": 1, "name": "Alice"}],
+                # value with a comma must be quoted; NULL -> empty field;
+                # empty string also -> empty field (CSV can't distinguish).
+                [{"id": 2, "name": "Smith, Bob"}, {"id": 3, "name": None}],
+            ]
+        )
+        out = tmp_path / "data.csv"
+        with patch.object(
+            QueryValidator, "validate", return_value=(True, None, QueryType.SELECT)
+        ):
+            result = await execute_query_to_file(
+                conn, mock_cache, sql="SELECT * FROM t", file_path=str(out)
+            )
+
+        assert result["status"] == "success"
+        assert result["row_count"] == 3
+        assert result["file_path"].endswith(".csv")
+        # Parse with the stdlib csv reader to verify it round-trips correctly.
+        import csv
+
+        rows = list(csv.reader(out.read_text(encoding="utf-8").splitlines()))
+        assert rows[0] == ["id", "name"]
+        assert rows[1] == ["1", "Alice"]
+        assert rows[2] == ["2", "Smith, Bob"]  # comma preserved via quoting
+        assert rows[3] == ["3", ""]  # NULL -> empty field
+
+    @pytest.mark.asyncio
+    async def test_csv_extension_is_preserved_not_doubled(self, tmp_path, mock_cache):
+        """A `.csv` path is used as-is, never turned into `.csv.tsv`."""
+        conn = Mock(spec=SnowflakeConnection)
+        conn.execute_query_stream.return_value = iter([[{"id": 1}]])
+        out = tmp_path / "report.csv"
+        with patch.object(
+            QueryValidator, "validate", return_value=(True, None, QueryType.SELECT)
+        ):
+            result = await execute_query_to_file(
+                conn, mock_cache, sql="SELECT 1", file_path=str(out)
+            )
+        assert result["status"] == "success"
+        assert (tmp_path / "report.csv").exists()
+        assert not (tmp_path / "report.csv.tsv").exists()
+        assert result["file_path"].endswith("report.csv")
+
+    @pytest.mark.asyncio
+    async def test_uppercase_csv_extension_recognized(self, tmp_path, mock_cache):
+        """Extension matching is case-insensitive: `.CSV` exports CSV."""
+        conn = Mock(spec=SnowflakeConnection)
+        conn.execute_query_stream.return_value = iter([[{"a": "x,y"}]])
+        out = tmp_path / "up.CSV"
+        with patch.object(
+            QueryValidator, "validate", return_value=(True, None, QueryType.SELECT)
+        ):
+            result = await execute_query_to_file(
+                conn, mock_cache, sql="SELECT 1", file_path=str(out)
+            )
+        assert result["status"] == "success"
+        assert (tmp_path / "up.CSV").exists()
+        # Quoting proves it was written as CSV, not TSV.
+        assert '"x,y"' in out.read_text(encoding="utf-8")

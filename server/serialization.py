@@ -11,16 +11,18 @@ guaranteed to be exactly one physical line, so the agent can rely on
 ``grep`` / ``awk -F'\\t'`` / ``cut -f`` and on ``wc -l`` for counting.
 """
 
+import csv
 from datetime import datetime
-from typing import Any
+from typing import IO, Any
 
 # Sentinel rendered for SQL NULL. Distinguishable from the empty string (an
 # actual zero-length value), which renders as a literal empty field. Used
 # identically inline and on disk so the sentinel is portable between them.
 TSV_NULL = "\\N"
 
-# File extension for on-disk TSV exports.
+# File extensions for on-disk exports.
 TSV_EXTENSION = ".tsv"
+CSV_EXTENSION = ".csv"
 
 
 def format_value(value: Any) -> Any:
@@ -152,3 +154,96 @@ def write_tsv_file(file_path: str, rows: list[dict], names: list[str]) -> int:
             f.write("\n")
             written += 1
     return written
+
+
+# --- CSV export ----------------------------------------------------------
+#
+# CSV is a convenience export for humans/spreadsheets, NOT the agent's native
+# parsing format (that is TSV, shared with the inline payload). The semantics
+# deliberately differ from TSV because standard CSV consumers expect them:
+#   * Quoting, not backslash-escaping: values containing commas, quotes, or
+#     newlines are wrapped per RFC 4180 (handled by the stdlib ``csv`` module).
+#   * NULL renders as an EMPTY field, not ``\\N`` -- CSV has no portable NULL
+#     sentinel, and an empty cell is the near-universal convention. (This means
+#     CSV cannot distinguish SQL NULL from an empty string; TSV still can.)
+
+
+def csv_cell(value: Any) -> str:
+    """Normalize a raw cell value for a CSV field.
+
+    Reuses :func:`format_value` for datetime/bytes handling, then renders SQL
+    NULL as an empty string (the CSV convention). The stdlib ``csv`` writer
+    handles all quoting/escaping, so no manual escaping is done here.
+    """
+    formatted = format_value(value)
+    if formatted is None:
+        return ""
+    if not isinstance(formatted, str):
+        formatted = str(formatted)
+    return formatted
+
+
+class _TsvStreamWriter:
+    """Streaming TSV writer: header then one escaped line per row."""
+
+    extension = TSV_EXTENSION
+
+    def __init__(self, handle: IO[str], names: list[str]):
+        self._handle = handle
+        self._names = names
+        handle.write(tsv_header_line(names))
+        handle.write("\n")
+
+    def write_row(self, row: dict) -> None:
+        self._handle.write(tsv_row_line(row, self._names))
+        self._handle.write("\n")
+
+
+class _CsvStreamWriter:
+    """Streaming CSV writer (RFC 4180 quoting via the stdlib ``csv`` module)."""
+
+    extension = CSV_EXTENSION
+
+    def __init__(self, handle: IO[str], names: list[str]):
+        self._names = names
+        # newline="" is required by the csv module so it controls line endings.
+        self._writer = csv.writer(handle)
+        self._writer.writerow(names)
+
+    def write_row(self, row: dict) -> None:
+        self._writer.writerow([csv_cell(row.get(name)) for name in self._names])
+
+
+# Map of recognized export extensions -> streaming writer class. Resolution is
+# case-insensitive and based solely on the path the caller chose.
+_STREAM_WRITERS = {
+    TSV_EXTENSION: _TsvStreamWriter,
+    CSV_EXTENSION: _CsvStreamWriter,
+}
+
+
+def resolve_export_extension(file_path: str) -> str:
+    """Pick the export extension implied by ``file_path``.
+
+    Returns the recognized extension (``.csv`` or ``.tsv``) the path already
+    ends with (case-insensitively), or :data:`TSV_EXTENSION` as the default when
+    the path has no recognized export extension. TSV is the default because it
+    is the agent's native format, identical to the inline payload.
+    """
+    lowered = file_path.lower()
+    for ext in _STREAM_WRITERS:
+        if lowered.endswith(ext):
+            return ext
+    return TSV_EXTENSION
+
+
+def open_export_writer(handle: IO[str], names: list[str], extension: str):
+    """Create a streaming writer for ``extension`` bound to an open file handle.
+
+    The returned object writes the header immediately and exposes
+    ``write_row(row)`` for incremental, memory-bounded streaming. ``extension``
+    must be one of the keys in :data:`_STREAM_WRITERS` (use
+    :func:`resolve_export_extension` to derive it).
+    """
+    writer_cls = _STREAM_WRITERS[extension]
+    return writer_cls(handle, names)
