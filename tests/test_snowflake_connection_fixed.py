@@ -275,7 +275,6 @@ class TestSnowflakeConnection:
 
             assert conn.config == mock_config
             assert conn.connection is None
-            assert conn.query_log == []
 
     @patch("server.snowflake_connection.snowflake.connector.connect")
     def test_connect_success(self, mock_connect, connection):
@@ -348,31 +347,6 @@ class TestSnowflakeConnection:
         query = "SELECT 1"
         with pytest.raises(RuntimeError, match="Not connected"):
             connection.execute_query(query)
-
-    def test_get_query_history(self, connection):
-        """Test getting query history."""
-        # Add some history to query_log
-        connection.query_log = [
-            {
-                "query": "SELECT 1",
-                "status": "success",
-                "timestamp": 1704067200,
-            },  # Unix timestamp
-            {"query": "SELECT 2", "status": "success", "timestamp": 1704153600},
-            {"query": "INVALID", "status": "failed", "timestamp": 1704240000},
-        ]
-
-        # Get all history
-        history = connection.get_query_history()
-        assert len(history) == 3
-
-        # Get only successful queries
-        history = connection.get_query_history(only_successful=True)
-        assert len(history) == 2
-
-        # Get limited history
-        history = connection.get_query_history(limit=1)
-        assert len(history) == 1
 
     def test_test_connection(self, connection):
         """Test the test_connection method."""

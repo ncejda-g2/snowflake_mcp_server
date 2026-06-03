@@ -296,60 +296,27 @@ async def describe_table_tool(
 # Tool: Execute Query
 @mcp.tool(
     name="execute_query",
-    description="""Execute a read-only SQL query on Snowflake.
+    description="""Execute a read-only SQL query (SELECT, SHOW, DESCRIBE, WITH) and return results.
 
-    This tool validates queries for safety, executes them, and returns all results.
-    Only SELECT, SHOW, DESCRIBE, and WITH queries are allowed.
-
-    IMPORTANT: The schema cache must be populated before executing queries.
-    Run refresh_catalog first if this is your first query.
+    Requires a populated schema cache; auto-refreshes on first use if empty.
 
     Parameters:
-    - sql: SQL query to execute (SELECT, SHOW, DESCRIBE, or WITH)
-    - database: Optional database context
-    - schema: Optional schema context
+    - sql: read-only SQL query
+    - database: optional database context
+    - schema: optional schema context
 
-    Returns a compact TEXT payload (not JSON), shaped for efficient parsing.
-    A result is returned in ONE of two ways:
+    Returns a compact TEXT payload (not JSON): a `key: value` header
+    (status, rows, cols, execution_time, query_id), a `---` separator, then a
+    positional TSV block. TSV rules: line 1 = tab-separated column names, one row
+    per line after; NULL = `\\N`; tabs/newlines escaped so each row is one line.
+    Parse with awk/cut, e.g. `awk -F'\\t' 'NR>1 && $3=="X"'`.
 
-    1. INLINE (only for small, narrow results -- few columns AND few rows):
-       - A `key: value` metadata header (status, rows, cols, execution_time,
-         query_id).
-       - A `---` separator.
-       - A positional TSV block: line 1 is the tab-separated column names, each
-         following line is one row. Parse directly with grep/awk/cut, e.g.
-         `awk -F'\\t' 'NR>1 && $3=="X"'`. NULLs render as `\\N`; tabs/newlines in
-         values are backslash-escaped, so every row stays on exactly one line.
+    Large/wide/tall results auto-spill the COMPLETE result to a temp `.tsv` file;
+    the payload then carries `results_file`, `column_index` (name->position), and a
+    `spilled` marker in place of inline rows. Read/grep/awk the file; `rows:` is
+    always the true total.
 
-    2. SPILLED TO FILE (whenever the result is too WIDE -- many columns -- too
-       TALL -- many rows -- or too LARGE -- one giant cell). The tool does NOT
-       truncate silently or dump a wall of text. It writes the COMPLETE result
-       to a temp `.tsv` file
-       (positional TSV, with a header line) and the inline payload becomes:
-       - the same metadata header, plus `results_file: /path`, `preview_rows`,
-         a `column_index` map, and a `spilled` marker.
-       - a `---` separator, then a ONE-ROW, DATA-ONLY preview (no header line).
-       Read/grep/awk the file for all rows. Resolve any column by name->index via
-       the `column_index` map (e.g. `63=TYPE` -> awk `$63`) without counting.
-       `rows:` always reports the true total, not the preview count.
-
-    Why results spill instead of inlining: read straight from context there is no
-    shell, so a WIDE result forces counting tab positions by eye and a TALL one
-    forces aggregating/scanning many rows by eye -- both error prone. Spilled, you
-    target columns by index and run counts/filters with awk/wc/grep on the file:
-    exact, not estimated. For aggregate questions, prefer pushing the work into
-    SQL (COUNT/SUM/WHERE/GROUP BY) over reading rows back at all.
-
-    Notes:
-    - Respects the LIMIT clause if present in SQL.
-    - To write results to a specific file you choose (to share or persist, any
-      size), use execute_query_to_file(sql, file_path) instead. This tool only
-      returns data inline or auto-spills to a temp file.
-
-    Examples:
-    - execute_query("SELECT * FROM SALES_DB.PUBLIC.CUSTOMERS LIMIT 10")
-    - execute_query("SELECT COUNT(*) FROM orders", database="SALES_DB", schema="PUBLIC")
-    - execute_query("SELECT * FROM large_table LIMIT 1000")
+    Example: execute_query("SELECT * FROM SALES_DB.PUBLIC.CUSTOMERS LIMIT 10")
     """,
 )
 async def execute_query_tool(
@@ -379,138 +346,25 @@ async def execute_query_tool(
     return ToolResult(content=text)
 
 
-# Tool: Validate Query Without Execution
-@mcp.tool(
-    name="validate_query_without_execution",
-    description="""Generate and validate a SQL query without executing it.
-
-    This tool can generate ANY type of SQL query including both read and write operations
-    (SELECT, INSERT, UPDATE, DELETE, etc.) but does NOT execute them. Useful for generating
-    queries that users want to review and execute elsewhere after manual verification.
-
-    IMPORTANT: Write queries (INSERT, UPDATE, DELETE, etc.) can be generated here but
-    CANNOT be executed through the execute_query tool for safety reasons. Users must
-    execute write queries directly in Snowflake after manual review.
-
-    Parameters:
-    - sql: SQL query to generate (read or write operations allowed)
-    - database: Optional database context
-    - schema: Optional schema context
-
-    The tool will:
-    - Accept both read and write queries
-    - Check query type (SELECT, INSERT, UPDATE, DELETE, etc.)
-    - Extract table references
-    - Provide hints for improvement
-    - Return the formatted query ready for manual review
-    - Indicate whether the query can be executed via execute_query (read-only) or not (write)
-
-    Examples:
-    - validate_query_without_execution("SELECT * FROM customers")
-    - validate_query_without_execution("INSERT INTO orders (id, amount) VALUES (1, 100.00)")
-    - validate_query_without_execution("UPDATE customers SET status = 'active' WHERE id = 123")
-    - validate_query_without_execution("DELETE FROM temp_data WHERE created < '2024-01-01'")
-    """,
-)
-async def validate_query_without_execution_tool(
-    sql: str, database: str | None = None, schema: str | None = None
-) -> ToolResult:
-    """Generate and prepare a SQL query (read or write) without executing it."""
-    try:
-        initialize_resources()
-    except Exception as e:
-        return _json_result(
-            {"status": "error", "message": f"Failed to initialize: {str(e)}"}
-        )
-
-    if connection is None or cache is None:
-        raise RuntimeError("Connection or cache initialization failed")
-    return _json_result(
-        await query_executor.validate_query_without_execution(
-            connection, cache, sql=sql, database=database, schema=schema
-        )
-    )
-
-
-# Tool: Get Query History
-@mcp.tool(
-    name="get_query_history",
-    description="""Get the history of executed queries in this session.
-
-    This tool returns a list of previously executed queries with their
-    status, execution time, and results.
-
-    Parameters:
-    - limit: Maximum number of queries to return (default: 10)
-    - only_successful: Only show successful queries (default: true)
-
-    Examples:
-    - get_query_history() - Get last 10 successful queries
-    - get_query_history(limit=50, only_successful=false) - Get last 50 queries including errors
-    """,
-)
-async def get_query_history_tool(
-    limit: int = 10, only_successful: bool = True
-) -> ToolResult:
-    """Get query execution history."""
-    try:
-        initialize_resources()
-    except Exception as e:
-        return _json_result(
-            {"status": "error", "message": f"Failed to initialize: {str(e)}"}
-        )
-
-    if connection is None:
-        raise RuntimeError("Connection initialization failed")
-    return _json_result(
-        await query_executor.get_query_history(
-            connection, limit=limit, only_successful=only_successful
-        )
-    )
-
-
 # Tool: Execute Query to File
 @mcp.tool(
     name="execute_query_to_file",
-    description="""Execute a read-only SQL query and write its results to a TSV file you choose.
+    description="""Writes read-only query results to a .tsv file at a path you choose.
 
-    Use this when you want the result as a file at a specific path -- to share
-    with someone or persist it -- regardless of size. A two-row lookup someone
-    wants sent on, or a multi-million-row export too big to return inline: same
-    tool. It streams results straight to disk (no data is returned in the
-    response and none is held in memory beyond a batch).
-
-    The file uses the SAME format as the inline execute_query payload:
-    tab-delimited, NULL rendered as `\\N` (distinct from an empty field),
-    tabs/newlines/backslashes escaped, one row per line -- so you can
-    grep/awk/wc it identically.
-
-    When to use which tool:
-    - execute_query: you want to SEE the data (returns inline, or auto-spills a
-      large result to a temp file the server picks).
-    - execute_query_to_file: you want the data AS A FILE at a path you specify.
+    Use when the result needs to land at a specific path -- to share or persist.
+    Same TSV format as execute_query: tab-delimited, header line, NULL = `\\N`,
+    escaped, one row per line.
 
     Parameters:
-    - sql: The SQL query to execute (must be read-only)
-    - file_path: Path where the TSV file should be saved (absolute paths recommended).
-                 A `.tsv` extension is appended if missing.
-                 Note: Relative paths are resolved from the MCP server's working directory
-    - database: Optional database context
-    - schema: Optional schema context
-    - timeout_seconds: Query timeout in seconds (default: 300, max: 3600)
+    - sql: read-only SQL (SELECT, SHOW, DESCRIBE, WITH)
+    - file_path: output path (absolute recommended; `.tsv` appended if missing)
+    - database: optional database context
+    - schema: optional schema context
+    - timeout_seconds: query timeout (default 300, max 3600)
 
-    Requirements:
-    - Schema cache must be populated (run refresh_catalog first)
-    - Query must be read-only (SELECT, SHOW, DESCRIBE, WITH)
-    - The file must not already exist (will not overwrite)
+    Requires a populated schema cache. Will not overwrite an existing file.
 
-    Examples:
-    - execute_query_to_file("SELECT * FROM customers LIMIT 2", "~/Downloads/sample.tsv")
-    - execute_query_to_file("SELECT * FROM large_table", "/tmp/export.tsv", timeout_seconds=600)
-
-    Notes:
-    - TSV file is tab-delimited, includes a header line, NULL = `\\N`
-    - Partial files are cleaned up on error
+    Example: execute_query_to_file("SELECT * FROM large_table", "/tmp/export.tsv")
     """,
 )
 async def execute_query_to_file_tool(

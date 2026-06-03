@@ -12,7 +12,7 @@
 
   <p align="center">
     <a href="https://github.com/ncejda-g2/snowflake_mcp_server/releases">
-      <img src="https://img.shields.io/badge/version-v0.2.3-9b59b6" alt="Version" />
+      <img src="https://img.shields.io/badge/version-v1.0.0-9b59b6" alt="Version" />
     </a>
     <a href="./CHANGELOG.md">
       <img src="https://img.shields.io/badge/changelog-Latest%20Changes-blue" alt="Changelog" />
@@ -56,8 +56,8 @@ Snowflake MCP Server bridges the gap between your Snowflake data warehouse and A
 - 🔒 **Strict Read-Only Access**: Multiple layers of protection against write operations
 - 🔑 **Flexible Authentication**: Browser-based SSO or headless key-pair auth via credential file
 - 💾 **Smart Caching**: 5-day schema cache for fast metadata access, reducing generic Snowflake schema queries and credit usage
-- 📄 **CSV Export**: Export query results directly to CSV files
-- 🛡️ **Query Validation**: Comprehensive SQL validation before execution
+- 📄 **TSV Export**: Write query results directly to TSV files, at any size
+- 🛡️ **Query Validation**: Every query is validated as read-only before execution
 - 🎯 **Responsible Token Management**: Lightweight outputs to minimize token usage
 
 ## 🚀 Easy Setup For LLM Agents

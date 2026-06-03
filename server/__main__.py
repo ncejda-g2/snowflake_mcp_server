@@ -89,8 +89,6 @@ def _start_degraded(error_message: str, log_file_path: str | None = None) -> Non
         ("find_tables", "Search for tables by keyword"),
         ("describe_table", "Get column information for a table"),
         ("execute_query", "Execute a read-only SQL query"),
-        ("validate_query_without_execution", "Validate a SQL query"),
-        ("get_query_history", "Get history of executed queries"),
         ("execute_query_to_file", "Execute a query and write results to a TSV file"),
     ]
 

@@ -5,6 +5,20 @@ All notable changes to the Snowflake MCP Server will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0] - 2026-06-03
+
+First stable release. Token-efficiency pass and a memory-leak fix.
+
+### Removed (breaking)
+- **`validate_query_without_execution` tool** — removed. The agent can generate SQL for manual review on its own; the tool added a tool slot, ~305 description tokens, and a verbose response payload for near-zero unique capability.
+- **`get_query_history` tool** — removed. It only exposed an in-process, in-memory log (not Snowflake's `QUERY_HISTORY`), lost on restart and redundant with the agent's own conversation context. (#11)
+
+### Fixed
+- **Memory leak**: `SnowflakeConnection.query_log` was an unbounded, append-only list that grew by one entry per query for the life of the process and was never evicted. Removed the list, its append sites in the `execute_query` path, and the now-orphaned `get_query_history()` method. (#11)
+
+### Changed
+- **Leaner tool descriptions**: rewrote `execute_query` (713 → 273 tokens) and `execute_query_to_file` (448 → 171 tokens), dropping duplicated format specs and "why" rationale (which lives in code comments) while keeping the full actionable contract. Total tool-description budget dropped from ~2,328 to ~1,201 tokens (~48%), paid on every context load. (#11)
+
 ## [0.2.3] - 2026-05-05
 
 ### Fixed
