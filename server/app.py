@@ -98,9 +98,7 @@ def initialize_resources(require_connection: bool = True):
     - resume: Resume from checkpoints if they exist (default: true)
     """,
 )
-async def refresh_catalog_tool(
-    force: bool = False, resume: bool = True
-) -> ToolResult:
+async def refresh_catalog_tool(force: bool = False, resume: bool = True) -> ToolResult:
     """Refresh the schema catalog cache."""
     try:
         # First, initialize only the cache to check if refresh is needed

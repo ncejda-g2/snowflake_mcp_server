@@ -27,7 +27,7 @@ Run: ``python scripts/measure_envelope.py``  (needs tiktoken, already a dev dep)
 
 import asyncio
 import json
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import tiktoken
 
@@ -100,19 +100,13 @@ async def after_payload() -> str:
     cache.is_empty.return_value = False
     cache.is_expired.return_value = False
 
-    # validate() -> read-only SELECT
-    orig = QueryValidator.validate
-
-    def _ok(self, sql):  # noqa: ANN001, ARG001 -- stub matches the method signature
-        return (True, None, QueryType.SELECT)
-
-    QueryValidator.validate = _ok
-    try:
+    # Force validate() to report a read-only SELECT without a live connection.
+    with patch.object(
+        QueryValidator, "validate", return_value=(True, None, QueryType.SELECT)
+    ):
         return await query_executor.execute_query(
             conn, cache, sql="SELECT * FROM wide_table LIMIT 50"
         )
-    finally:
-        QueryValidator.validate = orig
 
 
 def main() -> None:

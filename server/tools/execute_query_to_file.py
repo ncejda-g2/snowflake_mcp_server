@@ -173,9 +173,7 @@ async def execute_query_to_file(
                     # Establish column order from the first non-empty batch and
                     # write the header in the resolved format.
                     column_names = _column_names(None, batch[0])
-                    writer = open_export_writer(
-                        outfile, column_names, export_extension
-                    )
+                    writer = open_export_writer(outfile, column_names, export_extension)
 
                 # Write batch rows in the established column order.
                 for row in batch:

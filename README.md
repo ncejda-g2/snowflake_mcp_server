@@ -452,7 +452,7 @@ The server provides powerful tools for interacting with Snowflake:
 | `find_tables` | Search for tables by keyword across all databases |
 | `describe_table` | View detailed column information (like DESCRIBE TABLE) |
 | `execute_query` | Run read-only SQL queries (inline, or auto-spill large results to a temp file) |
-| `execute_query_to_file` | Execute a query and write its results to a TSV file at a chosen path (any size) |
+| `execute_query_to_file` | Execute a query and write its results to a TSV / CSV file at a chosen path (any size) |
 
 ## 📚 Documentation
 

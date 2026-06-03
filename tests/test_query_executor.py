@@ -691,7 +691,9 @@ class TestSweepSpillDir:
         old file but always keep the just-written result.
         """
         stale = self._make_spill(tmp_path, "query_stale.tsv", age_seconds=9999)
-        data = [{"id": i, "data": "x"} for i in range(query_executor.MAX_INLINE_ROWS + 1)]
+        data = [
+            {"id": i, "data": "x"} for i in range(query_executor.MAX_INLINE_ROWS + 1)
+        ]
         mock_result = Mock()
         mock_result.data = data
         mock_result.columns = ["id", "data"]
@@ -791,8 +793,12 @@ class TestSweepSpillDir:
         """Byte pass evicts only the grace-aged file, keeps the fresh one."""
         # aged (90s, evictable) + fresh (5s, protected), each 100 bytes, budget
         # 150. Only the aged file may go -> survivors = fresh (100 <= 150).
-        aged = self._make_spill(tmp_path, "query_aged.tsv", age_seconds=90, size_bytes=100)
-        fresh = self._make_spill(tmp_path, "query_fresh.tsv", age_seconds=5, size_bytes=100)
+        aged = self._make_spill(
+            tmp_path, "query_aged.tsv", age_seconds=90, size_bytes=100
+        )
+        fresh = self._make_spill(
+            tmp_path, "query_fresh.tsv", age_seconds=5, size_bytes=100
+        )
 
         with (
             patch.object(query_executor, "SPILL_DIR", str(tmp_path)),

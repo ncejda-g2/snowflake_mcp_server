@@ -157,9 +157,7 @@ def sweep_spill_dir() -> int:
     return deleted
 
 
-def _spill_to_disk(
-    rows: list[dict], names: list[str]
-) -> tuple[str, int]:
+def _spill_to_disk(rows: list[dict], names: list[str]) -> tuple[str, int]:
     """Write the full result to a temp TSV file and return (path, rows_written).
 
     Same TSV format/escaping/NULL sentinel as the inline payload, so the agent
@@ -343,9 +341,7 @@ async def execute_query(
             # column_index map, so re-emitting them as a TSV header line here
             # would duplicate every name in the payload for no benefit. The
             # preview is data-only -- just enough to show value formatting/shape.
-            preview_tsv = build_tsv_rows(
-                result.data[:SPILL_PREVIEW_ROWS], column_names
-            )
+            preview_tsv = build_tsv_rows(result.data[:SPILL_PREVIEW_ROWS], column_names)
             fields["results_file"] = spill_path
             fields["preview_rows"] = preview_count
             # 1-based name->position map. This is the SOLE column reference for a
@@ -362,8 +358,7 @@ async def execute_query(
             # bare marker: the line(s) after the --- are a header-less preview.
             row_word = "row" if preview_count == 1 else "rows"
             fields["spilled"] = (
-                f"{preview_count}-{row_word} preview only; "
-                "full results in results_file"
+                f"{preview_count}-{row_word} preview only; full results in results_file"
             )
             reason = "wide" if too_wide else "tall" if too_tall else "large"
             logger.warning(
@@ -371,9 +366,7 @@ async def execute_query(
                 f"{len(column_names)} cols, {len(inline_body):,} chars "
                 f"-> {spill_path}"
             )
-            return build_text_response(
-                status="success", fields=fields, tsv=preview_tsv
-            )
+            return build_text_response(status="success", fields=fields, tsv=preview_tsv)
 
         # Fits inline: narrow (<=MAX_INLINE_COLUMNS) and within the char budget.
         # ``inline_body`` is a compact positional TSV (header line + bare
@@ -396,4 +389,3 @@ async def execute_query(
                 "message": f"Query execution failed: {str(e)}",
             },
         )
-
