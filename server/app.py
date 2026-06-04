@@ -1,19 +1,20 @@
 #!/usr/bin/env python3
 """Snowflake MCP Server - Main application."""
 
+import json
 import logging
 from typing import Any
 
 from fastmcp import FastMCP
+from fastmcp.tools.tool import ToolResult
 
 from server.config import Config
 from server.schema_cache import SchemaCache
 from server.snowflake_connection import SnowflakeConnection
 from server.tools import (
     catalog_refresh,
-    execute_big_query_to_disk,
+    execute_query_to_file,
     query_executor,
-    save_to_csv,
     schema_inspector,
     table_inspector,
 )
@@ -28,6 +29,21 @@ mcp = FastMCP("Snowflake Read-Only MCP")
 # Global instances (initialized on startup)
 connection: SnowflakeConnection | None = None
 cache: SchemaCache | None = None
+
+
+def _json_result(payload: dict[str, Any]) -> ToolResult:
+    """Return a dict payload as a single JSON TextContent block.
+
+    FastMCP, given a plain dict, emits the data TWICE: once as a JSON text
+    block and again as a ``structuredContent`` object. For an LLM client both
+    arrive as text, so the structured copy is pure token waste. Serializing the
+    dict ourselves and wrapping it in ``ToolResult(content=...)`` makes FastMCP
+    emit exactly one ``TextContent`` and leave ``structured_content`` unset --
+    the same single-payload contract ``execute_query`` already follows. The
+    agent still receives the full JSON and can read any field (e.g.
+    ``file_path``) straight out of it.
+    """
+    return ToolResult(content=json.dumps(payload, default=str))
 
 
 # Initialize resources on first use
@@ -82,15 +98,15 @@ def initialize_resources(require_connection: bool = True):
     - resume: Resume from checkpoints if they exist (default: true)
     """,
 )
-async def refresh_catalog_tool(
-    force: bool = False, resume: bool = True
-) -> dict[str, Any]:
+async def refresh_catalog_tool(force: bool = False, resume: bool = True) -> ToolResult:
     """Refresh the schema catalog cache."""
     try:
         # First, initialize only the cache to check if refresh is needed
         initialize_resources(require_connection=False)
     except Exception as e:
-        return {"status": "error", "message": f"Failed to initialize cache: {str(e)}"}
+        return _json_result(
+            {"status": "error", "message": f"Failed to initialize cache: {str(e)}"}
+        )
 
     if cache is None:
         raise RuntimeError("Cache initialization failed")
@@ -98,26 +114,32 @@ async def refresh_catalog_tool(
     # Check if cache is valid before connecting to Snowflake
     if not force and not cache.is_expired() and not cache.is_empty():
         stats = cache.get_statistics()
-        return {
-            "status": "cache_valid",
-            "message": "Cache is still valid and not expired",
-            "statistics": stats,
-        }
+        return _json_result(
+            {
+                "status": "cache_valid",
+                "message": "Cache is still valid and not expired",
+                "statistics": stats,
+            }
+        )
 
     # Only connect to Snowflake if we actually need to refresh
     try:
         initialize_resources(require_connection=True)
     except Exception as e:
-        return {
-            "status": "error",
-            "message": f"Failed to connect to Snowflake: {str(e)}",
-        }
+        return _json_result(
+            {
+                "status": "error",
+                "message": f"Failed to connect to Snowflake: {str(e)}",
+            }
+        )
 
     if connection is None:
         raise RuntimeError("Connection initialization failed")
 
-    return await catalog_refresh.refresh_catalog(
-        connection, cache, force=force, resume=resume
+    return _json_result(
+        await catalog_refresh.refresh_catalog(
+            connection, cache, force=force, resume=resume
+        )
     )
 
 
@@ -129,8 +151,30 @@ async def refresh_catalog_tool(
     USE THIS WHEN: You want to explore what databases/schemas exist, or need to filter by exact patterns.
     Like SQL's: SHOW TABLES IN database LIKE 'pattern'
 
-    RETURNS: Hierarchical tree structure
-    - database → schema → list of tables (with column counts)
+    RETURNS (small result): hierarchical tree
+    - database → schema → list of tables
+
+    RETURNS (broad result): when the matching tree is too large to return inline
+    (e.g. show_tables() with no filter, or a broad database_pattern matching tens
+    of thousands of tables), the COMPLETE tree is written to a temp `.json` file
+    and the response is instead a compact summary built to help you NARROW:
+    `total_tables`, `total_schemas`, `results_file`, and a bounded breakdown that
+    adapts to what's left to narrow -- `top_schemas` (db.schema=count) when the
+    result is a single database, else `top_databases` (db=count) -- each with a
+    `(+X more ..., Y tables)` tail marker, plus a `spilled` hint.
+
+    To act on a spilled result, prefer RE-CALLING show_tables with a tighter
+    database_pattern/schema_pattern (served from cache, no Snowflake) until it
+    fits inline. To read results_file directly instead -- it is compact JSON
+    nested THREE levels deep, `{"DB": {"SCHEMA": ["TABLE", ...]}}` (so table
+    names are the innermost array, not a key) -- list its schemas WITHOUT loading
+    every table name into context:
+      jq -r 'to_entries[]|.key as $d|.value|keys[]|"\\($d).\\(.)"' <results_file>
+    or, if jq is unavailable:
+      python3 -c "import json,sys;d=json.load(open(sys.argv[1]));print(chr(10).join(f'{db}.{s}' for db,sc in d.items() for s in sc))" <results_file>
+    Mind the nesting depth when counting: `jq '[.[][][]]|length'` counts TABLES
+    (three flattens to reach the leaf array); `jq '[.[][]]|length'` counts
+    SCHEMAS. (total_tables/total_schemas in the summary already give both.)
 
     HOW IT WORKS:
     - Auto-refreshes cache if expired/empty (requires Snowflake auth on first use)
@@ -152,21 +196,25 @@ async def show_tables_tool(
     database_pattern: str | None = None,
     schema_pattern: str | None = None,
     table_pattern: str | None = None,
-) -> dict[str, Any]:
+) -> ToolResult:
     """Browse databases, schemas, and tables hierarchically with pattern filtering."""
     try:
         initialize_resources()
     except Exception as e:
-        return {"status": "error", "message": f"Failed to initialize: {str(e)}"}
+        return _json_result(
+            {"status": "error", "message": f"Failed to initialize: {str(e)}"}
+        )
 
     if connection is None or cache is None:
         raise RuntimeError("Connection or cache initialization failed")
-    return await schema_inspector.show_tables(
-        connection,
-        cache,
-        database_pattern=database_pattern,
-        schema_pattern=schema_pattern,
-        table_pattern=table_pattern,
+    return _json_result(
+        await schema_inspector.show_tables(
+            connection,
+            cache,
+            database_pattern=database_pattern,
+            schema_pattern=schema_pattern,
+            table_pattern=table_pattern,
+        )
     )
 
 
@@ -176,10 +224,22 @@ async def show_tables_tool(
     description="""Search for tables by keyword across ALL databases.
 
     USE THIS WHEN: You don't know where a table is, but know part of its name or purpose.
-    Searches both table names AND table comments.
+    Matches against both table names AND table comments (so a cryptically-named
+    table is still found when its comment mentions the term).
 
-    RETURNS: Flat list of matching tables
-    - [{database, schema, table, type, full_name, columns, comment}, ...]
+    RETURNS (small result): flat list of matches
+    - [{database, schema, table, type, full_name}, ...]
+      Note: neither the comment nor a column count is returned. The comment is the
+      one unbounded field (can be a multi-KB doc-block); a column count does not
+      help locate a table. For a table's comment and columns, use describe_table.
+
+    RETURNS (broad result): when too many tables match to return inline, the
+    COMPLETE result is written to a temp `.tsv` file and the response is instead a
+    compact summary built to help you NARROW: `total_hits`, `results_file`, a
+    bounded `top_groups` breakdown of the top database.schema clusters (with a
+    `(+X more groups, Y hits)` tail marker), and a `spilled` hint. To narrow, call
+    show_tables with database_pattern/schema_pattern from top_groups and/or a more
+    specific table_pattern -- don't blindly re-search.
 
     HOW IT WORKS:
     - Auto-refreshes cache if expired/empty (requires Snowflake auth on first use)
@@ -195,16 +255,20 @@ async def show_tables_tool(
     - find_tables("staging") - Find tables with "staging" in name or comment
     """,
 )
-async def find_tables_tool(search_term: str) -> dict[str, Any]:
+async def find_tables_tool(search_term: str) -> ToolResult:
     """Search for tables by keyword in names and comments across all databases."""
     try:
         initialize_resources()
     except Exception as e:
-        return {"status": "error", "message": f"Failed to initialize: {str(e)}"}
+        return _json_result(
+            {"status": "error", "message": f"Failed to initialize: {str(e)}"}
+        )
 
     if connection is None or cache is None:
         raise RuntimeError("Connection or cache initialization failed")
-    return await schema_inspector.find_tables(connection, cache, search_term)
+    return _json_result(
+        await schema_inspector.find_tables(connection, cache, search_term)
+    )
 
 
 # Tool: Describe Table
@@ -239,266 +303,144 @@ async def describe_table_tool(
     database: str,
     schema: str,
     table: str,
-) -> dict[str, Any]:
+) -> ToolResult:
     """Get detailed column information for a specific table."""
     try:
         initialize_resources()
     except Exception as e:
-        return {"status": "error", "message": f"Failed to initialize: {str(e)}"}
+        return _json_result(
+            {"status": "error", "message": f"Failed to initialize: {str(e)}"}
+        )
 
     if cache is None:
         raise RuntimeError("Cache initialization failed")
-    return await table_inspector.describe_table(
-        cache,
-        connection=connection,
-        database=database,
-        schema=schema,
-        table=table,
+    return _json_result(
+        await table_inspector.describe_table(
+            cache,
+            connection=connection,
+            database=database,
+            schema=schema,
+            table=table,
+        )
     )
 
 
 # Tool: Execute Query
 @mcp.tool(
     name="execute_query",
-    description="""Execute a read-only SQL query on Snowflake.
+    description="""Execute a read-only SQL query (SELECT, SHOW, DESCRIBE, WITH) and return results.
 
-    This tool validates queries for safety, executes them, and returns all results.
-    Only SELECT, SHOW, DESCRIBE, and WITH queries are allowed.
-
-    IMPORTANT: The schema cache must be populated before executing queries.
-    Run refresh_catalog first if this is your first query.
+    Requires a populated schema cache; auto-refreshes on first use if empty.
 
     Parameters:
-    - sql: SQL query to execute (SELECT, SHOW, DESCRIBE, or WITH)
-    - database: Optional database context
-    - schema: Optional schema context
+    - sql: read-only SQL query
+    - database: optional database context
+    - schema: optional schema context
 
-    Returns:
-    - All query results (respects LIMIT clause if present in SQL)
-    - Results are cached for CSV export if under 5GB
-    - Use save_last_query_to_csv to export results
+    Returns a compact TEXT payload (not JSON): a `key: value` header
+    (status, rows, cols, execution_time, query_id), a `---` separator, then a
+    positional TSV block. TSV rules: line 1 = tab-separated column names, one row
+    per line after; NULL = `\\N`; tabs/newlines escaped so each row is one line.
+    Parse with awk/cut, e.g. `awk -F'\\t' 'NR>1 && $3=="X"'`.
 
-    Note:
-    - If you encounter token limit issues with large result sets, consider using
-      execute_big_query_to_disk instead, which streams results directly to a file
-      without returning the data in the response, or consider adding a stricter LIMIT clause.
+    Large/wide/tall results auto-spill the COMPLETE result to a temp `.tsv` file;
+    the payload then carries `results_file`, `column_index` (name->position), and a
+    `spilled` marker in place of inline rows. Read/grep/awk the file; `rows:` is
+    always the true total.
 
-    Examples:
-    - execute_query("SELECT * FROM SALES_DB.PUBLIC.CUSTOMERS LIMIT 10")
-    - execute_query("SELECT COUNT(*) FROM orders", database="SALES_DB", schema="PUBLIC")
-    - execute_query("SELECT * FROM large_table LIMIT 1000")
+    Example: execute_query("SELECT * FROM SALES_DB.PUBLIC.CUSTOMERS LIMIT 10")
     """,
 )
 async def execute_query_tool(
     sql: str, database: str | None = None, schema: str | None = None
-) -> dict[str, Any]:
-    """Execute a read-only SQL query."""
+) -> ToolResult:
+    """Execute a read-only SQL query.
+
+    Wraps the text payload in a ToolResult with ONLY content set so FastMCP
+    emits a single TextContent block and never duplicates it as
+    structuredContent. This is version-safe across FastMCP 2.x and 3.x (which
+    disagree on how `output_schema` disables structured output), because a
+    ToolResult is passed through untouched by both.
+    """
     try:
         initialize_resources()
     except Exception as e:
-        return {"status": "error", "message": f"Failed to initialize: {str(e)}"}
+        text = query_executor.build_text_response(
+            status="error", fields={"message": f"Failed to initialize: {str(e)}"}
+        )
+        return ToolResult(content=text)
 
     if connection is None or cache is None:
         raise RuntimeError("Connection or cache initialization failed")
-    return await query_executor.execute_query(
+    text = await query_executor.execute_query(
         connection, cache, sql=sql, database=database, schema=schema
     )
+    return ToolResult(content=text)
 
 
-# Tool: Validate Query Without Execution
+# Tool: Execute Query to File
 @mcp.tool(
-    name="validate_query_without_execution",
-    description="""Generate and validate a SQL query without executing it.
+    name="execute_query_to_file",
+    description="""Writes read-only query results to a file at a path you choose.
 
-    This tool can generate ANY type of SQL query including both read and write operations
-    (SELECT, INSERT, UPDATE, DELETE, etc.) but does NOT execute them. Useful for generating
-    queries that users want to review and execute elsewhere after manual verification.
-
-    IMPORTANT: Write queries (INSERT, UPDATE, DELETE, etc.) can be generated here but
-    CANNOT be executed through the execute_query tool for safety reasons. Users must
-    execute write queries directly in Snowflake after manual review.
+    Use when the result needs to land at a specific path -- to share or persist.
+    Format follows the extension: `.csv` writes CSV (NULL = empty field);
+    anything else writes TSV (same as execute_query: tab-delimited, NULL = `\\N`).
 
     Parameters:
-    - sql: SQL query to generate (read or write operations allowed)
-    - database: Optional database context
-    - schema: Optional schema context
+    - sql: read-only SQL (SELECT, SHOW, DESCRIBE, WITH)
+    - file_path: output path (absolute recommended; end with `.csv` for CSV,
+      else `.tsv` is used/appended)
+    - database: optional database context
+    - schema: optional schema context
+    - timeout_seconds: query timeout (default 300, max 3600)
 
-    The tool will:
-    - Accept both read and write queries
-    - Check query type (SELECT, INSERT, UPDATE, DELETE, etc.)
-    - Extract table references
-    - Provide hints for improvement
-    - Return the formatted query ready for manual review
-    - Indicate whether the query can be executed via execute_query (read-only) or not (write)
+    Requires a populated schema cache. Will not overwrite an existing file.
 
-    Examples:
-    - validate_query_without_execution("SELECT * FROM customers")
-    - validate_query_without_execution("INSERT INTO orders (id, amount) VALUES (1, 100.00)")
-    - validate_query_without_execution("UPDATE customers SET status = 'active' WHERE id = 123")
-    - validate_query_without_execution("DELETE FROM temp_data WHERE created < '2024-01-01'")
+    Example: execute_query_to_file("SELECT * FROM t", "/tmp/export.csv")
     """,
 )
-async def validate_query_without_execution_tool(
-    sql: str, database: str | None = None, schema: str | None = None
-) -> dict[str, Any]:
-    """Generate and prepare a SQL query (read or write) without executing it."""
-    try:
-        initialize_resources()
-    except Exception as e:
-        return {"status": "error", "message": f"Failed to initialize: {str(e)}"}
-
-    if connection is None or cache is None:
-        raise RuntimeError("Connection or cache initialization failed")
-    return await query_executor.validate_query_without_execution(
-        connection, cache, sql=sql, database=database, schema=schema
-    )
-
-
-# Tool: Get Query History
-@mcp.tool(
-    name="get_query_history",
-    description="""Get the history of executed queries in this session.
-
-    This tool returns a list of previously executed queries with their
-    status, execution time, and results.
-
-    Parameters:
-    - limit: Maximum number of queries to return (default: 10)
-    - only_successful: Only show successful queries (default: true)
-
-    Examples:
-    - get_query_history() - Get last 10 successful queries
-    - get_query_history(limit=50, only_successful=false) - Get last 50 queries including errors
-    """,
-)
-async def get_query_history_tool(
-    limit: int = 10, only_successful: bool = True
-) -> dict[str, Any]:
-    """Get query execution history."""
-    try:
-        initialize_resources()
-    except Exception as e:
-        return {"status": "error", "message": f"Failed to initialize: {str(e)}"}
-
-    if connection is None:
-        raise RuntimeError("Connection initialization failed")
-    return await query_executor.get_query_history(
-        connection, limit=limit, only_successful=only_successful
-    )
-
-
-# Tool: Save Last Query to CSV
-@mcp.tool(
-    name="save_last_query_to_csv",
-    description="""Save the last executed query results to a CSV file.
-
-    This tool exports the complete results from the most recently executed query
-    to a CSV file at the specified path. The query must have been executed
-    successfully and its results must be within the 5GB cache size limit.
-
-    Features:
-    - Exports ALL rows from the last query
-    - Includes column headers
-    - Uses comma delimiter
-    - Handles NULL values as empty strings
-    - Formats datetime values in ISO format
-    - Optionally exports the SQL query to a .sql file (enabled by default)
-
-    Parameters:
-    - file_path: Path where the CSV file should be saved (absolute paths recommended)
-                 Note: Relative paths are resolved from the MCP server's working directory
-    - export_sql: Whether to also export the SQL query to a .sql file (default: true)
-
-    Requirements:
-    - A query must have been executed successfully using execute_query
-    - Query results must be under 5GB (cache limit)
-
-    Examples:
-    - save_last_query_to_csv("~/Downloads/customers.csv")
-    - save_last_query_to_csv("/tmp/query_results.csv")
-    - save_last_query_to_csv("./data/export.csv", export_sql=false)
-
-    Notes:
-    - When export_sql is true, the SQL file will be saved with the same name as the CSV file
-      but with a .sql extension (e.g., customers.csv → customers.sql)
-    - The SQL file will be formatted for readability with proper indentation
-    """,
-)
-async def save_last_query_to_csv_tool(
-    file_path: str, export_sql: bool = True
-) -> dict[str, Any]:
-    """Save the last query results to a CSV file."""
-    return await save_to_csv.save_last_query_to_csv(file_path, export_sql)
-
-
-# Tool: Execute Big Query to Disk
-@mcp.tool(
-    name="execute_big_query_to_disk",
-    description="""Execute a large read-only SQL query and save results directly to a CSV file.
-
-    This tool is designed for queries that return large result sets that would exceed
-    token limits. It streams results directly to disk without returning the data in
-    the response, avoiding token limit issues.
-
-    Features:
-    - Streams results directly to disk (doesn't return data in response)
-    - Handles arbitrarily large result sets using streaming
-    - Returns only execution status, row count, and file size
-    - Exports SQL query to a .sql file alongside the CSV
-    - Configurable timeout for long-running queries
-
-    Parameters:
-    - sql: The SQL query to execute (must be read-only)
-    - file_path: Path where the CSV file should be saved (absolute paths recommended)
-                 Note: Relative paths are resolved from the MCP server's working directory
-    - database: Optional database context
-    - schema: Optional schema context
-    - timeout_seconds: Query timeout in seconds (default: 300, max: 3600)
-
-    Requirements:
-    - Schema cache must be populated (run refresh_catalog first)
-    - Query must be read-only (SELECT, SHOW, DESCRIBE, WITH)
-    - Files must not already exist (will not overwrite)
-
-    Examples:
-    - execute_big_query_to_disk("SELECT * FROM large_table", "~/Downloads/large_data.csv")
-    - execute_big_query_to_disk("SELECT * FROM sales_data", "/tmp/sales.csv", timeout_seconds=600)
-
-    Notes:
-    - CSV file uses comma delimiter, includes headers, empty string for NULLs
-    - SQL file is created only after successful CSV export
-    - Partial files are cleaned up on error
-    """,
-)
-async def execute_big_query_to_disk_tool(
+async def execute_query_to_file_tool(
     sql: str,
     file_path: str,
     database: str | None = None,
     schema: str | None = None,
     timeout_seconds: int = 300,
-) -> dict[str, Any]:
-    """Execute a large query and stream results to disk."""
+) -> ToolResult:
+    """Execute a query and stream results to a file at a chosen path."""
     try:
         initialize_resources()
     except Exception as e:
-        return {"status": "error", "message": f"Failed to initialize: {str(e)}"}
+        return _json_result(
+            {"status": "error", "message": f"Failed to initialize: {str(e)}"}
+        )
 
     if connection is None or cache is None:
         raise RuntimeError("Connection or cache initialization failed")
-    return await execute_big_query_to_disk.execute_big_query_to_disk(
-        connection,
-        cache,
-        sql=sql,
-        file_path=file_path,
-        database=database,
-        schema=schema,
-        timeout_seconds=timeout_seconds,
+    return _json_result(
+        await execute_query_to_file.execute_query_to_file(
+            connection,
+            cache,
+            sql=sql,
+            file_path=file_path,
+            database=database,
+            schema=schema,
+            timeout_seconds=timeout_seconds,
+        )
     )
 
 
 def main():
     """Main entry point for the application."""
     try:
+        # Clear stale spill files left by a previous run before serving. Uses the
+        # same TTL + FIFO policy as the per-spill sweep (it does NOT blindly wipe
+        # the dir), so a just-restarted client whose task is mid-read keeps any
+        # still-fresh file while genuinely old/over-cap leftovers are reclaimed.
+        removed = query_executor.sweep_spill_dir()
+        if removed:
+            logger.info(f"Startup spill cleanup removed {removed} stale file(s)")
+
         # Run the MCP server
         if config.transport == "stdio":
             logger.info("Starting MCP server in STDIO mode")

@@ -5,6 +5,25 @@ All notable changes to the Snowflake MCP Server will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0] - 2026-06-03
+
+First stable release. Token-efficiency pass and a memory-leak fix.
+
+### Added
+- **CSV export** in `execute_query_to_file`: a `.csv` output path now writes RFC 4180 comma-delimited CSV (proper quoting; SQL NULL → empty field) instead of forcing `.tsv`. Any other/absent extension still defaults to TSV (the agent's native format). Also fixes the prior `.csv` → `.csv.tsv` double-extension behavior.
+- **`show_tables` auto-spill (bounded output)**: `show_tables` now advertises a hard output ceiling. Previously an unfiltered `show_tables()` — or even a broad `database_pattern` like `GDC` (30k+ tables) — could serialize to **megabytes**, forcing the MCP client to bail out. When the matching tree exceeds the inline budget (`SNOWFLAKE_MCP_SHOW_TABLES_CHAR_BUDGET`, default ~6 KB ≈ 1.5–2k tokens), the COMPLETE tree spills to a temp `.json` file and the response collapses to a compact, narrowing-focused summary: `total_tables`, `total_schemas`, `results_file`, and an **adaptive** breakdown — `top_schemas` (db.schema=count) when the result is a single database, else `top_databases` (db=count), each top-N with a `(+X more …, Y tables)` tail. A second-order fallback drops even the breakdown if it would bust the budget, so the response is *always* bounded. The tool description carries the static spill contract (file shape + `jq`/`python3` recipes to read it); the response carries only instance data plus a pointer. Tuned via `SNOWFLAKE_MCP_SHOW_TABLES_CHAR_BUDGET` and `SNOWFLAKE_MCP_SHOW_TABLES_TOP_GROUPS`. The `.json` spill shares the same temp namespace and retention sweep as the existing `.tsv` spills (the sweep glob is now prefix-only, covering both).
+
+### Removed (breaking)
+- **`validate_query_without_execution` tool** — removed. The agent can generate SQL for manual review on its own; the tool added a tool slot, ~305 description tokens, and a verbose response payload for near-zero unique capability.
+- **`get_query_history` tool** — removed. It only exposed an in-process, in-memory log (not Snowflake's `QUERY_HISTORY`), lost on restart and redundant with the agent's own conversation context. (#11)
+
+### Fixed
+- **Memory leak**: `SnowflakeConnection.query_log` was an unbounded, append-only list that grew by one entry per query for the life of the process and was never evicted. Removed the list, its append sites in the `execute_query` path, and the now-orphaned `get_query_history()` method. (#11)
+
+### Changed
+- **Leaner tool descriptions**: rewrote `execute_query` (713 → 273 tokens) and `execute_query_to_file` (448 → 171 tokens), dropping duplicated format specs and "why" rationale (which lives in code comments) while keeping the full actionable contract. Total tool-description budget dropped from ~2,328 to ~1,201 tokens (~48%), paid on every context load. (#11)
+- **Dropped column counts from catalog-browse output**: `find_tables`, `show_tables`, and the `find_tables` spill TSV no longer emit a per-table `columns` count, and `show_tables`/`get_statistics` no longer emit `total_columns`. A column count does not help locate a table — `describe_table` still reports `column_count` from its own on-demand fetch. This also lets the catalog scan drop its per-schema `INFORMATION_SCHEMA.COLUMNS` query: `refresh_catalog` now issues **one async query per schema instead of two**, roughly halving catalog-scan query volume. It also removes the misleading `columns: 0` checkpoint-persistence artifact.
+
 ## [0.2.3] - 2026-05-05
 
 ### Fixed

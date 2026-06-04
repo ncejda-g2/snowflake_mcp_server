@@ -285,7 +285,6 @@ class SnowflakeConnection:
         self.config = config
         self.connection: SnowflakeConn | None = None
         self.logger = logging.getLogger(__name__)
-        self.query_log: list[dict] = []
         self.validator = QueryValidator()
         self._connection_metadata: dict = {}
 
@@ -453,14 +452,7 @@ class SnowflakeConnection:
             self.logger.error(f"Query rejected: {error_msg}")
             raise ValueError(error_msg)
 
-        # Log query
         start_time = time.time()
-        query_entry = {
-            "timestamp": start_time,
-            "sql": sql[:500] + ("..." if len(sql) > 500 else ""),
-            "database": database,
-            "schema": schema,
-        }
 
         try:
             with self._read_only_transaction() as cursor:
@@ -511,17 +503,6 @@ class SnowflakeConnection:
 
                 execution_time = time.time() - start_time
 
-                # Update query log
-                query_entry.update(
-                    {
-                        "execution_time": execution_time,
-                        "row_count": row_count,
-                        "query_id": query_id,
-                        "status": "success",
-                    }
-                )
-                self.query_log.append(query_entry)
-
                 self.logger.info(
                     f"Query executed successfully: "
                     f"{row_count} rows in {execution_time:.2f}s"
@@ -544,18 +525,10 @@ class SnowflakeConnection:
             else:
                 error_msg = f"Query execution failed: {error_str}"
 
-            query_entry["status"] = "error"
-            query_entry["error"] = error_msg
-            self.query_log.append(query_entry)
-
             self.logger.error(error_msg)
             raise ValueError(error_msg) from None
 
         except Exception as e:
-            query_entry["status"] = "error"
-            query_entry["error"] = str(e)
-            self.query_log.append(query_entry)
-
             self.logger.error(f"Query execution failed: {str(e)}")
             raise
 
@@ -709,19 +682,6 @@ class SnowflakeConnection:
             finally:
                 self.connection = None
                 self._connection_metadata = {}
-
-    def get_query_history(
-        self, limit: int = 100, only_successful: bool = False
-    ) -> list[dict]:
-        """Get query execution history."""
-        history = self.query_log.copy()
-
-        if only_successful:
-            history = [q for q in history if q.get("status") == "success"]
-
-        # Sort by timestamp descending and limit
-        history.sort(key=lambda x: x["timestamp"], reverse=True)
-        return history[:limit]
 
     def __enter__(self):
         """Context manager entry."""
