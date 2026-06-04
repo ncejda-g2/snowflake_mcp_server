@@ -1,5 +1,6 @@
 """Tests for server/tools/query_executor.py module."""
 
+import json
 import os
 import time
 from datetime import datetime
@@ -586,8 +587,8 @@ class TestSweepSpillDir:
         """Create a spill file matching the sweep glob, given an age and size.
 
         ``name`` is treated as a per-test suffix; the shared ``spill_`` prefix is
-        prepended so the file matches the generalized ``spill_*.tsv`` glob the
-        sweep covers (every route's spills share this one namespace).
+        prepended so the file matches the generalized ``spill_*`` glob the sweep
+        covers (every route's spills share this one namespace, any extension).
         """
         path = os.path.join(str(dir_path), f"{query_executor._SPILL_PREFIX}{name}")
         with open(path, "w", encoding="utf-8") as f:
@@ -666,7 +667,7 @@ class TestSweepSpillDir:
         assert os.path.exists(f1)
 
     def test_sweep_ignores_non_spill_files(self, tmp_path):
-        """The sweep only touches query_*.tsv -- never unrelated files."""
+        """The sweep only touches spill_ files -- never unrelated files."""
         keep = os.path.join(str(tmp_path), "important.txt")
         with open(keep, "w", encoding="utf-8") as f:
             f.write("do not delete")
@@ -681,6 +682,26 @@ class TestSweepSpillDir:
 
         assert deleted == 0
         assert os.path.exists(keep)  # untouched despite being old
+
+    def test_sweep_covers_json_spills_too(self, tmp_path):
+        """The prefix-only glob sweeps .json spills (show_tables) alongside .tsv.
+
+        Both share the ``spill_`` prefix, so the single sweep retires them under
+        one retention policy regardless of extension.
+        """
+        tsv_old = self._make_spill(tmp_path, "query_old.tsv", age_seconds=9999)
+        json_old = self._make_spill(tmp_path, "show_old.json", age_seconds=9999)
+
+        with (
+            patch.object(query_executor, "SPILL_DIR", str(tmp_path)),
+            patch.object(query_executor, "SPILL_FILE_TTL_SECONDS", 100),
+            patch.object(query_executor, "SPILL_MAX_FILES", 1000),
+        ):
+            deleted = query_executor.sweep_spill_dir()
+
+        assert deleted == 2
+        assert not os.path.exists(tsv_old)
+        assert not os.path.exists(json_old)
 
     def test_sweep_missing_dir_is_noop(self, tmp_path):
         """A non-existent SPILL_DIR is handled gracefully (no error, 0 deleted)."""
@@ -843,3 +864,39 @@ class TestSweepSpillDir:
         assert not os.path.exists(a3)  # oldest survivor, dropped by count cap
         assert not os.path.exists(a2)  # next oldest, dropped by byte budget
         assert os.path.exists(a1)  # newest, survives (100 <= 150)
+
+
+class TestSpillJsonToDisk:
+    """The JSON spill primitive: shared namespace, compact write, prune-first."""
+
+    def test_writes_compact_json_in_shared_namespace(self, tmp_path):
+        payload = {"DB1": {"S1": ["T_A", "T_B"]}}
+
+        with patch.object(query_executor, "SPILL_DIR", str(tmp_path)):
+            path = query_executor.spill_json_to_disk(payload, infix="show")
+
+        assert os.path.exists(path)
+        # Shared prefix (so the single sweep cleans it) + .json extension.
+        assert os.path.basename(path).startswith(query_executor._SPILL_PREFIX)
+        assert path.endswith(".json")
+        # Round-trips to the exact payload, written compactly (no spaces).
+        with open(path, encoding="utf-8") as f:
+            raw = f.read()
+        assert json.loads(raw) == payload
+        assert ", " not in raw and '": ' not in raw  # separators=(",", ":")
+
+    def test_prunes_before_writing(self, tmp_path):
+        """A pre-write sweep retires stale spills but keeps the new file."""
+        stale = os.path.join(str(tmp_path), f"{query_executor._SPILL_PREFIX}old.json")
+        with open(stale, "w", encoding="utf-8") as f:
+            f.write("{}")
+        os.utime(stale, (time.time() - 9999, time.time() - 9999))
+
+        with (
+            patch.object(query_executor, "SPILL_DIR", str(tmp_path)),
+            patch.object(query_executor, "SPILL_FILE_TTL_SECONDS", 100),
+        ):
+            path = query_executor.spill_json_to_disk({"a": 1}, infix="show")
+
+        assert not os.path.exists(stale)  # evicted by the pre-write sweep
+        assert os.path.exists(path)  # new file survives

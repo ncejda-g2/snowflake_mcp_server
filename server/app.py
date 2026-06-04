@@ -151,8 +151,30 @@ async def refresh_catalog_tool(force: bool = False, resume: bool = True) -> Tool
     USE THIS WHEN: You want to explore what databases/schemas exist, or need to filter by exact patterns.
     Like SQL's: SHOW TABLES IN database LIKE 'pattern'
 
-    RETURNS: Hierarchical tree structure
+    RETURNS (small result): hierarchical tree
     - database → schema → list of tables
+
+    RETURNS (broad result): when the matching tree is too large to return inline
+    (e.g. show_tables() with no filter, or a broad database_pattern matching tens
+    of thousands of tables), the COMPLETE tree is written to a temp `.json` file
+    and the response is instead a compact summary built to help you NARROW:
+    `total_tables`, `total_schemas`, `results_file`, and a bounded breakdown that
+    adapts to what's left to narrow -- `top_schemas` (db.schema=count) when the
+    result is a single database, else `top_databases` (db=count) -- each with a
+    `(+X more ..., Y tables)` tail marker, plus a `spilled` hint.
+
+    To act on a spilled result, prefer RE-CALLING show_tables with a tighter
+    database_pattern/schema_pattern (served from cache, no Snowflake) until it
+    fits inline. To read results_file directly instead -- it is compact JSON
+    nested THREE levels deep, `{"DB": {"SCHEMA": ["TABLE", ...]}}` (so table
+    names are the innermost array, not a key) -- list its schemas WITHOUT loading
+    every table name into context:
+      jq -r 'to_entries[]|.key as $d|.value|keys[]|"\\($d).\\(.)"' <results_file>
+    or, if jq is unavailable:
+      python3 -c "import json,sys;d=json.load(open(sys.argv[1]));print(chr(10).join(f'{db}.{s}' for db,sc in d.items() for s in sc))" <results_file>
+    Mind the nesting depth when counting: `jq '[.[][][]]|length'` counts TABLES
+    (three flattens to reach the leaf array); `jq '[.[][]]|length'` counts
+    SCHEMAS. (total_tables/total_schemas in the summary already give both.)
 
     HOW IT WORKS:
     - Auto-refreshes cache if expired/empty (requires Snowflake auth on first use)

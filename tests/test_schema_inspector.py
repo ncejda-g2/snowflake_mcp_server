@@ -21,7 +21,7 @@ import pytest
 from server.schema_cache import SchemaCache, TableInfo
 from server.snowflake_connection import SnowflakeConnection
 from server.tools import query_executor, schema_inspector
-from server.tools.schema_inspector import find_tables
+from server.tools.schema_inspector import find_tables, show_tables
 
 
 @pytest.fixture
@@ -218,3 +218,164 @@ class TestFindTablesSpill:
         assert "more group" not in result["top_groups"]
         assert "DB1.S1=60" in result["top_groups"]
         assert "DB2.S2=60" in result["top_groups"]
+
+
+class TestShowTablesInline:
+    """Under-budget results return the tree inline (no spill)."""
+
+    @pytest.mark.asyncio
+    async def test_database_filter_returns_compact_map(self, cache, connection):
+        _add_tables(cache, [("DB1", "S1", "T_A"), ("DB1", "S1", "T_B")])
+
+        result = await show_tables(connection, cache, database_pattern="DB1")
+
+        assert result["status"] == "success"
+        assert "results_file" not in result
+        assert result["data"] == {"DB1": {"S1": ["T_A", "T_B"]}}
+        assert result["total_tables"] == 2
+
+    @pytest.mark.asyncio
+    async def test_no_filter_returns_detailed_hierarchy(self, cache, connection):
+        _add_tables(cache, [("DB1", "S1", "T_A")])
+
+        result = await show_tables(connection, cache)
+
+        assert result["status"] == "success"
+        assert "results_file" not in result
+        assert "hierarchy" in result
+        db = result["hierarchy"]["DB1"]
+        assert db["schema_count"] == 1
+        assert db["schemas"]["S1"]["table_count"] == 1
+        assert db["schemas"]["S1"]["tables"][0]["name"] == "T_A"
+
+    @pytest.mark.asyncio
+    async def test_no_results(self, cache, connection):
+        result = await show_tables(connection, cache, database_pattern="ZZZ_NO_DB")
+        assert result["status"] == "no_results"
+
+
+class TestShowTablesSpill:
+    """Over-budget results spill the full tree (.json) and return a summary."""
+
+    @pytest.mark.asyncio
+    async def test_spills_to_json_with_complete_tree(self, cache, connection, tmp_path):
+        specs = [("DB1", "S1", f"T_{i}") for i in range(100)]
+        specs += [("DB2", "S2", f"T_{i}") for i in range(50)]
+        _add_tables(cache, specs)
+
+        with (
+            patch.object(query_executor, "SPILL_DIR", str(tmp_path)),
+            patch.object(schema_inspector, "SHOW_TABLES_INLINE_CHAR_BUDGET", 100),
+        ):
+            result = await show_tables(connection, cache)
+
+        assert result["status"] == "success"
+        assert "hierarchy" not in result
+        assert "data" not in result
+        # 100 + 50 + the fixture's 1 seed table; 3 dbs / 3 schemas likewise.
+        assert result["total_tables"] == 151
+        assert result["total_schemas"] == 3
+
+        spill_path = result["results_file"]
+        assert spill_path.endswith(".json")
+        assert os.path.basename(spill_path).startswith(query_executor._SPILL_PREFIX)
+
+        import json
+
+        with open(spill_path, encoding="utf-8") as f:
+            tree = json.load(f)
+        # COMPLETE compact tree on disk.
+        assert set(tree) == {"DB1", "DB2", "SEED_DB"}
+        assert len(tree["DB1"]["S1"]) == 100
+        assert len(tree["DB2"]["S2"]) == 50
+
+    @pytest.mark.asyncio
+    async def test_multiple_databases_breakdown_is_top_databases(
+        self, cache, connection, tmp_path
+    ):
+        specs = [("DB1", "S1", f"T_{i}") for i in range(100)]
+        specs += [("DB2", "S2", f"T_{i}") for i in range(50)]
+        _add_tables(cache, specs)
+
+        with (
+            patch.object(query_executor, "SPILL_DIR", str(tmp_path)),
+            patch.object(schema_inspector, "SHOW_TABLES_INLINE_CHAR_BUDGET", 100),
+        ):
+            result = await show_tables(connection, cache)
+
+        # Spans >1 database -> top_databases axis.
+        assert "top_databases" in result
+        assert "top_schemas" not in result
+        assert "DB1=100" in result["top_databases"]
+        assert "DB2=50" in result["top_databases"]
+        assert "results_file" in result["spilled"]
+
+    @pytest.mark.asyncio
+    async def test_single_database_breakdown_is_top_schemas(
+        self, cache, connection, tmp_path
+    ):
+        # Single database -> the only narrowing axis left is the schema.
+        specs = [("GDC", "STAGING", f"T_{i}") for i in range(120)]
+        specs += [("GDC", "RAW", f"T_{i}") for i in range(30)]
+        _add_tables(cache, specs)
+
+        with (
+            patch.object(query_executor, "SPILL_DIR", str(tmp_path)),
+            patch.object(schema_inspector, "SHOW_TABLES_INLINE_CHAR_BUDGET", 100),
+        ):
+            result = await show_tables(connection, cache, database_pattern="GDC")
+
+        assert "top_schemas" in result
+        assert "top_databases" not in result
+        assert "GDC.STAGING=120" in result["top_schemas"]
+        assert "GDC.RAW=30" in result["top_schemas"]
+
+    @pytest.mark.asyncio
+    async def test_breakdown_tail_marker_when_over_top_n(
+        self, cache, connection, tmp_path
+    ):
+        # 4 databases, top-N cap of 2 -> 2 listed + a tail marker for the rest.
+        specs = [("DB1", "S", f"T_{i}") for i in range(40)]
+        specs += [("DB2", "S", f"T_{i}") for i in range(30)]
+        specs += [("DB3", "S", f"T_{i}") for i in range(20)]
+        specs += [("DB4", "S", f"T_{i}") for i in range(10)]
+        _add_tables(cache, specs)
+
+        with (
+            patch.object(query_executor, "SPILL_DIR", str(tmp_path)),
+            patch.object(schema_inspector, "SHOW_TABLES_INLINE_CHAR_BUDGET", 100),
+            patch.object(schema_inspector, "SHOW_TABLES_TOP_GROUPS", 2),
+        ):
+            result = await show_tables(connection, cache)
+
+        top = result["top_databases"]
+        assert "DB1=40" in top
+        assert "DB2=30" in top
+        assert "DB3=" not in top  # collapsed into the tail
+        # SEED_DB (1 table) + DB3 (20) + DB4 (10) = 3 more dbs, 31 tables.
+        assert "(+3 more databases, 31 tables)" in top
+
+    @pytest.mark.asyncio
+    async def test_c_fallback_when_breakdown_busts_budget(
+        self, cache, connection, tmp_path
+    ):
+        """If even the bounded breakdown line exceeds the ceiling, drop the list
+        (tier C) and still return a bounded summary + file path."""
+        specs = [("DB1", "S1", f"T_{i}") for i in range(60)]
+        specs += [("DB2", "S2", f"T_{i}") for i in range(60)]
+        _add_tables(cache, specs)
+
+        # Ceiling of 1 char: the tree spills AND the breakdown line busts it too.
+        with (
+            patch.object(query_executor, "SPILL_DIR", str(tmp_path)),
+            patch.object(schema_inspector, "SHOW_TABLES_INLINE_CHAR_BUDGET", 1),
+        ):
+            result = await show_tables(connection, cache)
+
+        assert result["status"] == "success"
+        assert "top_databases" not in result
+        assert "top_schemas" not in result
+        assert "results_file" in result
+        assert "results_file" in result["spilled"]
+        # Tier C has no breakdown to point at, so the hint must NOT reference one.
+        assert "from top_" not in result["spilled"]

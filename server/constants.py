@@ -171,6 +171,37 @@ FIND_TABLES_INLINE_CHAR_BUDGET = _env_int(
 # keyword) -- the count alone would hide that distinction.
 FIND_TABLES_TOP_GROUPS = _env_int("SNOWFLAKE_MCP_FIND_TABLES_TOP_GROUPS", 5)
 
+# show_tables inline budget + breakdown size.
+#
+# show_tables browses the catalog tree. An unfiltered call -- or even a single
+# broad database_pattern (e.g. "GDC", which substring-matches GDC + GDC_TESTING
+# and pulls 30k+ tables) -- can serialize to MEGABYTES, far past any sane context
+# budget. So this route advertises a HARD output ceiling: the response is always
+# bounded (~1.5k tokens), whether inline or spilled. When the compact tree
+# exceeds this budget, show_tables writes the COMPLETE tree to a temp .json file
+# and returns a bounded, narrowing-focused summary instead.
+#
+# Measured against the EXACT compact-JSON bytes we would emit inline (the
+# {database: {schema: [table, ...]}} map), not an estimate. ~6,000 chars is
+# ~1.5k tokens of JSON -- deliberately under FIND_TABLES_INLINE_CHAR_BUDGET's
+# positional TSV (JSON's braces/quotes/keys tokenize a touch denser per useful
+# field). Independent from the other budgets: each gates a different route's
+# different shape.
+SHOW_TABLES_INLINE_CHAR_BUDGET = _env_int(
+    "SNOWFLAKE_MCP_SHOW_TABLES_CHAR_BUDGET", 6_000
+)
+
+# Number of groups in the spilled-show_tables breakdown.
+#
+# When show_tables spills, the summary reports a bounded top-N breakdown to drive
+# narrowing. The breakdown axis is ADAPTIVE: if the result spans exactly one
+# database, the only remaining narrowing axis is the schema, so it lists the top
+# database.schema groups by table count; if it spans several databases, it lists
+# the top databases. Either way N is a HARD CAP with a "(+X more ..., Y tables)"
+# tail marker, so the summary can never reblow the budget that triggered the
+# spill -- no matter how many databases/schemas the account has.
+SHOW_TABLES_TOP_GROUPS = _env_int("SNOWFLAKE_MCP_SHOW_TABLES_TOP_GROUPS", 10)
+
 # Inline char budget: a BACKSTOP gate, not the primary one.
 #
 # Shape is governed by the two gates above: a result is inline only if it is

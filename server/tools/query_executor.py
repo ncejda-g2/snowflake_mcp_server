@@ -1,6 +1,7 @@
 """Query execution tool for running read-only SQL queries."""
 
 import glob
+import json
 import logging
 import os
 import time
@@ -45,6 +46,8 @@ __all__ = [
     "_column_names",
     "_format_value",
     "execute_query",
+    "spill_json_to_disk",
+    "spill_rows_to_disk",
 ]
 
 # Backward-compatible aliases (the canonical implementations live in
@@ -53,14 +56,16 @@ _build_tsv = build_tsv
 
 # Shared spill-file namespace. EVERY route that auto-spills a result to SPILL_DIR
 # uses the ``spill_`` prefix (e.g. ``spill_query_<uuid>.tsv``,
-# ``spill_find_<uuid>.tsv``), so the single cleanup sweep below covers them all
-# under one retention policy and one bounded directory. The glob is still narrow
-# enough that the sweep only ever touches files WE created -- never anything else
-# a user might place in (or that shares) the temp dir. Adding spilling to a new
-# route needs no change here: it just spills with its own infix via the shared
-# prefix and inherits cleanup for free.
+# ``spill_find_<uuid>.tsv``, ``spill_show_<uuid>.json``), so the single cleanup
+# sweep below covers them all under one retention policy and one bounded
+# directory. The glob matches the PREFIX ONLY (not a fixed extension) so it
+# sweeps every spill format -- TSV result dumps and JSON tree dumps alike -- yet
+# is still narrow enough that the sweep only ever touches files WE created, never
+# anything else a user might place in (or that shares) the temp dir. Adding
+# spilling to a new route -- in any format -- needs no change here: it spills
+# with its own infix via the shared prefix and inherits cleanup for free.
 _SPILL_PREFIX = "spill_"
-_SPILL_GLOB = f"{_SPILL_PREFIX}*.tsv"
+_SPILL_GLOB = f"{_SPILL_PREFIX}*"
 
 
 def sweep_spill_dir() -> int:
@@ -190,6 +195,34 @@ def spill_rows_to_disk(
     )
     written = write_tsv_file(file_path, rows, names)
     return file_path, written
+
+
+def spill_json_to_disk(payload: Any, infix: str = "json") -> str:
+    """Write a structured payload to a temp ``.json`` file and return the path.
+
+    The JSON sibling of :func:`spill_rows_to_disk`, for routes whose result is a
+    nested structure (e.g. show_tables's database->schema->[table] tree) rather
+    than flat tabular rows. It shares the EXACT same lifecycle as the TSV spill:
+    the same SPILL_DIR, the same ``spill_`` prefix (so the single sweep -- now
+    globbing the prefix, not a fixed extension -- cleans ``.json`` and ``.tsv``
+    alike), and the same pre-write prune. ``infix`` names the route in the
+    filename (``spill_<infix>_<uuid>.json``) for provenance only; it does not
+    affect cleanup.
+
+    Written compactly (no indentation) -- the file is a machine artifact the
+    agent inspects with jq / a one-line python / a scoped re-call, not a document
+    to read top to bottom, so indentation would only inflate it on disk.
+    """
+    os.makedirs(SPILL_DIR, exist_ok=True)
+    # Prune BEFORE writing (see spill_rows_to_disk): the new file is protected
+    # from this sweep (does not exist yet) and the next (min-age grace).
+    sweep_spill_dir()
+    file_path = os.path.join(
+        SPILL_DIR, f"{_SPILL_PREFIX}{infix}_{uuid.uuid4().hex}.json"
+    )
+    with open(file_path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, separators=(",", ":"))
+    return file_path
 
 
 def build_text_response(
