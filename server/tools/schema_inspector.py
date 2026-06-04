@@ -25,11 +25,18 @@ logger = logging.getLogger(__name__)
 # output. Comment is the one unbounded, heavy-tailed field here (almost always
 # null, occasionally a multi-KB doc-block), so echoing it reintroduces exactly
 # the token blowup the spill exists to prevent. Every column kept is bounded
-# (identifier-length name, enum type, integer count), so the projection can never
-# blow up regardless of input. To read a specific table's comment, the agent uses
+# (identifier-length name, enum type), so the projection can never blow up
+# regardless of input. To read a specific table's comment, the agent uses
 # describe_table -- the route whose job is explaining one table, where that cost
 # is justified.
-_FIND_TABLES_TSV_COLUMNS = ["full_name", "type", "columns"]
+#
+# Deliberately NO ``columns`` count either. find_tables is a locator: its job is
+# to point at the right ``full_name`` to then describe_table. A column *count*
+# does not discriminate between candidate tables (you read describe_table for the
+# real column list regardless), so it adds a token per row with no decision
+# attached. It is also not loaded at refresh time, so dropping it lets the
+# catalog scan skip its per-schema COLUMNS query entirely.
+_FIND_TABLES_TSV_COLUMNS = ["full_name", "type"]
 
 
 def _find_tables_row(table: TableInfo) -> dict[str, Any]:
@@ -41,7 +48,6 @@ def _find_tables_row(table: TableInfo) -> dict[str, Any]:
     return {
         "full_name": table.full_name,
         "type": table.table_type,
-        "columns": table.column_count,
     }
 
 
@@ -86,8 +92,8 @@ async def show_tables(
     This tool provides a hierarchical view of the database structure,
     with optional filtering by patterns. Similar to SQL's SHOW TABLES.
 
-    NOTE: When database_pattern is used, column information is omitted
-    to reduce response size and avoid token limits.
+    NOTE: When database_pattern is used, the response collapses to the
+    ultra-compact name-only format to reduce response size and avoid token limits.
 
     Args:
         connection: Active Snowflake connection (for auto-refresh only)
@@ -114,10 +120,11 @@ async def show_tables(
         # Build hierarchical structure
         hierarchy: dict[str, Any] = {}
         total_tables = 0
-        total_columns = 0
 
-        # When filtering by database, omit column info to reduce response size
-        include_columns = database_pattern is None
+        # When filtering by database, emit the ultra-compact name-only format; the
+        # fuller per-table detail (comment) is only worth its tokens for the broad
+        # "browse everything" call. ``include_detail`` gates that fuller shape.
+        include_detail = database_pattern is None
 
         # Get all databases from cache
         databases = cache.get_databases()
@@ -147,15 +154,13 @@ async def show_tables(
                         continue
 
                     # When filtering by database, just use table names (most compact)
-                    if not include_columns:
+                    if not include_detail:
                         schema_tables.append(table.table_name)
                     else:
                         # Include full details when not filtering by database
                         table_info = {
                             "name": table.table_name,
-                            "columns": table.column_count,
                         }
-                        total_columns += table.column_count
 
                         # Only include comment if it exists
                         if table.comment:
@@ -167,7 +172,7 @@ async def show_tables(
 
                 if schema_tables:
                     # When filtering by database, use most compact format
-                    if not include_columns:
+                    if not include_detail:
                         db_schemas[schema] = (
                             schema_tables  # Just the list of table names
                         )
@@ -179,7 +184,7 @@ async def show_tables(
 
             if db_schemas:
                 # When filtering by database, use ultra-compact format
-                if not include_columns:
+                if not include_detail:
                     hierarchy[database] = db_schemas  # Just the schemas dict
                 else:
                     hierarchy[database] = {
@@ -203,7 +208,7 @@ async def show_tables(
             }
 
         # Simpler response when filtering by database
-        if not include_columns:
+        if not include_detail:
             return {
                 "status": "success",
                 "data": hierarchy,
@@ -215,7 +220,6 @@ async def show_tables(
             "databases": len(hierarchy),
             "total_schemas": sum(db["schema_count"] for db in hierarchy.values()),
             "total_tables": total_tables,
-            "total_columns": total_columns,
         }
 
         return {
@@ -298,7 +302,6 @@ async def find_tables(
                 "table": table.table_name,
                 "type": table.table_type,
                 "full_name": table.full_name,
-                "columns": table.column_count,
             }
             for table in matching_tables
         ]

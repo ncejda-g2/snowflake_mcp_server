@@ -251,23 +251,22 @@ class TestSchemaCache:
                 "COMMENT": "A new table",
             },
         ]
-        column_counts = {"NEW_TAB": 5}
-
         count = cache.merge_schema_results(
             "DB1",
             "SCH1",
             table_results,
-            column_counts=column_counts,
             max_last_altered="2026-01-01",
         )
 
         assert count == 1
         # Old table in SCH1 should be gone
         assert cache.get_table("DB1", "SCH1", "OLD_TAB") is None
-        # New table in SCH1 should exist with column_count but no columns
+        # New table in SCH1 should exist. Refresh no longer loads column counts,
+        # so a freshly-merged table has no columns and a derived count of 0;
+        # describe_table populates these on demand.
         new_tab = cache.get_table("DB1", "SCH1", "NEW_TAB")
         assert new_tab is not None
-        assert new_tab.column_count == 5
+        assert new_tab.column_count == 0
         assert new_tab.columns == []
         # Table in SCH2 should be untouched
         assert cache.get_table("DB1", "SCH2", "KEEP_ME") is not None

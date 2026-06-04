@@ -213,28 +213,24 @@ class SchemaCache:
         database: str,
         schema: str,
         table_results: list[dict],
-        column_counts: dict[str, int] | None = None,
         max_last_altered: str | None = None,
     ) -> int:
         """Merge table-level results for a single schema into the cache.
 
         Removes all existing entries for this database.schema,
         then adds the new ones. Tables in other schemas are untouched.
-        Columns are NOT loaded here — they are fetched on-demand by describe_table.
+        Columns are NOT loaded here — they (and their counts) are fetched
+        on-demand by describe_table.
 
         Args:
             database: Database name
             schema: Schema name
             table_results: INFORMATION_SCHEMA.TABLES query results (one row per table)
-            column_counts: Optional dict mapping TABLE_NAME -> column count
             max_last_altered: The max LAST_ALTERED value for this schema
 
         Returns:
             Number of tables in this schema after merge
         """
-        if column_counts is None:
-            column_counts = {}
-
         with self._lock:
             prefix = f"{database}.{schema}.".upper()
 
@@ -259,9 +255,10 @@ class SchemaCache:
 
                 table_key = f"{db}.{sch}.{table_name}".upper()
 
-                # Preserve previously-loaded columns if available
+                # Preserve previously-loaded columns if available. column_count is
+                # derived from them: it is non-zero only once describe_table has
+                # fetched a table's columns (refresh no longer loads counts).
                 columns = old_columns.get(table_key, [])
-                col_count = column_counts.get(table_name, len(columns))
 
                 table_info = TableInfo(
                     database=db,
@@ -269,7 +266,7 @@ class SchemaCache:
                     table_name=table_name,
                     table_type=table_type,
                     columns=columns,
-                    column_count=col_count,
+                    column_count=len(columns),
                     row_count=row.get("ROW_COUNT", row.get("row_count")),
                     bytes=row.get("BYTES", row.get("bytes")),
                     comment=row.get("COMMENT", row.get("comment")),
@@ -646,7 +643,6 @@ class SchemaCache:
             tables = self.get_tables_in_database(db)
             db_stats[db] = {
                 "table_count": len(tables),
-                "total_columns": sum(t.column_count for t in tables),
             }
         stats["databases"] = db_stats
 

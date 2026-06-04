@@ -21,6 +21,7 @@ First stable release. Token-efficiency pass and a memory-leak fix.
 
 ### Changed
 - **Leaner tool descriptions**: rewrote `execute_query` (713 → 273 tokens) and `execute_query_to_file` (448 → 171 tokens), dropping duplicated format specs and "why" rationale (which lives in code comments) while keeping the full actionable contract. Total tool-description budget dropped from ~2,328 to ~1,201 tokens (~48%), paid on every context load. (#11)
+- **Dropped column counts from catalog-browse output**: `find_tables`, `show_tables`, and the `find_tables` spill TSV no longer emit a per-table `columns` count, and `show_tables`/`get_statistics` no longer emit `total_columns`. A column count does not help locate a table — `describe_table` still reports `column_count` from its own on-demand fetch. This also lets the catalog scan drop its per-schema `INFORMATION_SCHEMA.COLUMNS` query: `refresh_catalog` now issues **one async query per schema instead of two**, roughly halving catalog-scan query volume. It also removes the misleading `columns: 0` checkpoint-persistence artifact.
 
 ## [0.2.3] - 2026-05-05
 

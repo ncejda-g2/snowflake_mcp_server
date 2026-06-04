@@ -12,7 +12,6 @@ from server.tools.catalog_refresh import (
     _quote_string_literal,
     _schema_unchanged,
     _SchemaJob,
-    _submit_counts_query,
     _submit_tables_query,
 )
 
@@ -182,22 +181,6 @@ def test_submit_tables_query_quotes_database_identifier():
     assert "WHERE TABLE_SCHEMA = 'PUBLIC'" in submitted_sql
     assert job.tables_qid == "tables-qid"
     assert job.tables_cursor is cursor
-
-
-def test_submit_counts_query_quotes_database_identifier():
-    conn = Mock()
-    cursor = Mock()
-    cursor.sfqid = "counts-qid"
-    conn.cursor.return_value = cursor
-    job = _SchemaJob(database="SNOWFLAKE$GDS", schema="PUBLIC")
-
-    _submit_counts_query(conn, job)
-
-    submitted_sql = cursor.execute_async.call_args.args[0]
-    assert 'FROM "SNOWFLAKE$GDS".INFORMATION_SCHEMA.COLUMNS' in submitted_sql
-    assert "WHERE TABLE_SCHEMA = 'PUBLIC'" in submitted_sql
-    assert job.counts_qid == "counts-qid"
-    assert job.counts_cursor is cursor
 
 
 def test_schema_unchanged_quotes_database_identifier():

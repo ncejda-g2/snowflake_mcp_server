@@ -3,7 +3,7 @@
 import contextlib
 import logging
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 
 import snowflake.connector
@@ -26,18 +26,15 @@ POLL_INTERVAL_SECONDS = 0.5
 
 @dataclass
 class _SchemaJob:
-    """Tracks the async queries for a single schema scan."""
+    """Tracks the async query for a single schema scan."""
 
     database: str
     schema: str
-    # Phase 1: TABLES query
+    # TABLES query (the only metadata fetched at refresh time -- per-table column
+    # counts are NOT loaded here; describe_table fetches columns on demand)
     tables_qid: str | None = None
     tables_cursor: DictCursor | None = None
     tables_data: list[dict] | None = None
-    # Phase 2: COLUMNS count query (submitted after TABLES completes)
-    counts_qid: str | None = None
-    counts_cursor: DictCursor | None = None
-    column_counts: dict[str, int] = field(default_factory=dict)
     # Result
     done: bool = False
     error: str | None = None
@@ -57,8 +54,8 @@ async def refresh_catalog(
     Refresh the schema catalog cache by scanning all accessible databases.
 
     Uses a two-tier approach: only table-level metadata is loaded eagerly
-    (from INFORMATION_SCHEMA.TABLES + column counts via GROUP BY).
-    Column details are fetched on-demand by describe_table.
+    (from INFORMATION_SCHEMA.TABLES -- one async query per schema). Column
+    details (and counts) are fetched on-demand by describe_table.
 
     Scans up to MAX_ASYNC_QUERIES schemas concurrently using Snowflake's
     async query API on a single connection.
@@ -261,8 +258,8 @@ def _scan_schemas_async(
                     completed_keys.append(key)
                     continue
 
-                if job.tables_data is None:
-                    # Phase 1: waiting for TABLES query
+                if not job.done:
+                    # Waiting for the TABLES query -- the only phase now.
                     assert job.tables_cursor is not None
                     status = conn.get_query_status_throw_if_error(job.tables_qid)
                     if status == QueryStatus.SUCCESS:
@@ -270,28 +267,6 @@ def _scan_schemas_async(
                         job.tables_data = job.tables_cursor.fetchall()
                         job.tables_cursor.close()
                         job.tables_cursor = None
-
-                        if job.tables_data:
-                            # Submit phase 2: COLUMNS count query
-                            _submit_counts_query(conn, job)
-                        else:
-                            # Empty schema
-                            job.done = True
-
-                elif not job.done:
-                    # Phase 2: waiting for COLUMNS count query
-                    assert job.counts_cursor is not None
-                    status = conn.get_query_status_throw_if_error(job.counts_qid)
-                    if status == QueryStatus.SUCCESS:
-                        job.counts_cursor.get_results_from_sfqid(job.counts_qid)
-                        rows = job.counts_cursor.fetchall()
-                        job.counts_cursor.close()
-                        job.counts_cursor = None
-                        if rows:
-                            job.column_counts = {
-                                row["TABLE_NAME"]: int(row["COLUMN_COUNT"])
-                                for row in rows
-                            }
                         job.done = True
 
                 if job.done:
@@ -300,8 +275,8 @@ def _scan_schemas_async(
             except Exception as e:
                 job.error = f"Failed to scan {key}: {e}"
                 logger.warning(job.error)
-                # Clean up cursors
-                for cursor in (job.tables_cursor, job.counts_cursor):
+                # Clean up cursor
+                for cursor in (job.tables_cursor,):
                     if cursor:
                         with contextlib.suppress(Exception):
                             cursor.close()
@@ -321,7 +296,6 @@ def _scan_schemas_async(
                     job.database,
                     job.schema,
                     job.tables_data,
-                    column_counts=job.column_counts,
                     max_last_altered=max_la,
                 )
                 cache.save_checkpoint(job.database, job.schema, job.tables_data)
@@ -358,26 +332,6 @@ def _submit_tables_query(
     )
     job.tables_qid = cursor.sfqid
     job.tables_cursor = cursor
-
-
-def _submit_counts_query(
-    conn: snowflake.connector.SnowflakeConnection, job: _SchemaJob
-) -> None:
-    """Submit an async COLUMNS count query for a schema."""
-    quoted_db = SnowflakeConnection._quote_identifier(job.database, "database")
-    schema_literal = _quote_string_literal(job.schema)
-
-    cursor = conn.cursor(snowflake.connector.DictCursor)
-    cursor.execute_async(
-        f"""
-        SELECT TABLE_NAME, COUNT(*) as COLUMN_COUNT
-        FROM {quoted_db}.INFORMATION_SCHEMA.COLUMNS
-        WHERE TABLE_SCHEMA = {schema_literal}
-        GROUP BY TABLE_NAME
-        """
-    )
-    job.counts_qid = cursor.sfqid
-    job.counts_cursor = cursor
 
 
 def _compute_max_last_altered(rows: list[dict]) -> str | None:

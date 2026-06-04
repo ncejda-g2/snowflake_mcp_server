@@ -91,6 +91,8 @@ class TestFindTablesInline:
         assert full_names == {"DB1.S1.PRODUCT_A", "DB1.S1.PRODUCT_B"}
         # comment is never echoed -- it is the one unbounded field.
         assert all("comment" not in r for r in result["results"])
+        # a column count does not help locate; it is not echoed either.
+        assert all("columns" not in r for r in result["results"])
 
     @pytest.mark.asyncio
     async def test_no_results(self, cache, connection):
@@ -155,7 +157,7 @@ class TestFindTablesSpill:
         assert os.path.basename(spill_path).startswith(query_executor._SPILL_PREFIX)
         with open(spill_path, encoding="utf-8") as f:
             lines = f.read().splitlines()
-        assert lines[0] == "full_name\ttype\tcolumns"  # TSV header, no comment
+        assert lines[0] == "full_name\ttype"  # TSV header, no comment, no count
         assert len(lines) == 1 + 200  # header + every match
 
     @pytest.mark.asyncio

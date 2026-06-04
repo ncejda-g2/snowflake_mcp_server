@@ -152,7 +152,7 @@ async def refresh_catalog_tool(force: bool = False, resume: bool = True) -> Tool
     Like SQL's: SHOW TABLES IN database LIKE 'pattern'
 
     RETURNS: Hierarchical tree structure
-    - database → schema → list of tables (with column counts)
+    - database → schema → list of tables
 
     HOW IT WORKS:
     - Auto-refreshes cache if expired/empty (requires Snowflake auth on first use)
@@ -206,9 +206,10 @@ async def show_tables_tool(
     table is still found when its comment mentions the term).
 
     RETURNS (small result): flat list of matches
-    - [{database, schema, table, type, full_name, columns}, ...]
-      Note: the comment is NOT returned (it is the one unbounded field and can be
-      a multi-KB doc-block). To read a specific table's comment, use describe_table.
+    - [{database, schema, table, type, full_name}, ...]
+      Note: neither the comment nor a column count is returned. The comment is the
+      one unbounded field (can be a multi-KB doc-block); a column count does not
+      help locate a table. For a table's comment and columns, use describe_table.
 
     RETURNS (broad result): when too many tables match to return inline, the
     COMPLETE result is written to a temp `.tsv` file and the response is instead a
