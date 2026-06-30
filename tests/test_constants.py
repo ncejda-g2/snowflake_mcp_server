@@ -9,8 +9,6 @@ def test_spill_configuration():
     """Test auto-spill configuration constants."""
     assert isinstance(constants.SPILL_DIR, str)
     assert constants.SPILL_DIR  # non-empty path
-    assert isinstance(constants.SPILL_PREVIEW_ROWS, int)
-    assert constants.SPILL_PREVIEW_ROWS > 0
 
 
 def test_spill_retention_constants():

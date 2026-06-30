@@ -273,12 +273,12 @@ class TestExecuteQuery:
     async def test_execute_query_auto_spills_large_result(
         self, mock_connection, mock_cache, tmp_path
     ):
-        """Large results spill to a temp .tsv file with a preview + path.
+        """Large results spill to a temp .tsv file with a path, NO inline preview.
 
         The tool must NOT dump the full wall of text inline and must NOT
-        truncate silently: it writes the COMPLETE result to disk and returns a
-        short preview plus the file path. The on-disk file is the same TSV
-        format as the inline payload.
+        truncate silently: it writes the COMPLETE result to disk and returns the
+        file path + column_index map, with no preview rows (the agent reads the
+        file directly). The on-disk file is the same TSV format as inline.
         """
         # Create a result set whose TSV size exceeds the inline budget.
         cell_len = 200
@@ -318,36 +318,35 @@ class TestExecuteQuery:
             spill_path = parsed["results_file"]
             assert spill_path.endswith(".tsv")
             assert os.path.exists(spill_path)
-            # The inline preview is DATA ONLY (no header line): the column names
-            # live in the column_index map, so re-emitting them as a TSV header
-            # would duplicate every name for no benefit. Every preview line must
-            # therefore be a real data row, not the header.
-            preview_lines = tsv_part.split("\n") if tsv_part else []
-            assert 0 < len(preview_lines) <= query_executor.SPILL_PREVIEW_ROWS
-            # First preview line is a data row, not the column-name header.
-            assert preview_lines[0].split("\t") != ["id", "data"]
-            # The first preview row matches the first data row positionally.
-            assert preview_lines[0].split("\t") == ["0", "x" * cell_len]
+            # NO inline preview: the agent reads the file directly. The payload
+            # has no TSV body at all (no `---` separator content).
+            assert tsv_part == ""
+            assert "spilled" not in parsed
+            assert "preview_rows" not in parsed
             # The 1-based column index map is the SOLE column reference inline,
             # so the agent never has to count columns by eye to write awk/cut.
             assert parsed["column_index"] == "1=id 2=data"
-            # The on-disk file still carries its own header line + every row.
+            # The on-disk file carries its own header line + every row.
             with open(spill_path, encoding="utf-8") as f:
                 file_lines = f.read().splitlines()
             assert len(file_lines) == num_rows + 1  # header + all rows
             assert file_lines[0].split("\t") == ["id", "data"]
 
     @pytest.mark.asyncio
-    async def test_narrow_inline_result_keeps_positional_tsv(
+    async def test_narrow_multirow_result_keeps_positional_tsv(
         self, mock_connection, mock_cache
     ):
-        """A few-column inline result stays as compact positional TSV.
+        """A few-column, multi-row inline result stays as compact positional TSV.
 
-        Narrow results are trivially readable, so positional (header + rows) is
-        the cheaper format and no labeling is applied.
+        Narrow multi-row results are trivially readable, so positional (header +
+        rows) is the cheaper format and no labeling is applied. (A SINGLE row
+        instead uses the labeled record format -- tested separately.)
         """
         cols = ["id", "name", "city"]  # <= MAX_INLINE_COLUMNS
-        data = [{"id": 1, "name": "Alice", "city": "NYC"}]
+        data = [
+            {"id": 1, "name": "Alice", "city": "NYC"},
+            {"id": 2, "name": "Bob", "city": "LA"},
+        ]
         mock_result = Mock()
         mock_result.data = data
         mock_result.columns = cols
@@ -367,21 +366,55 @@ class TestExecuteQuery:
         lines = tsv_part.split("\n")
         assert lines[0] == "id\tname\tcity"  # header line of column names
         assert lines[1] == "1\tAlice\tNYC"  # bare positional values
+        assert lines[2] == "2\tBob\tLA"
 
     @pytest.mark.asyncio
-    async def test_wide_result_always_spills_even_when_tiny(
+    async def test_single_row_uses_labeled_record(self, mock_connection, mock_cache):
+        """A SINGLE row is rendered as an aligned NAME  value record, one column
+        per line -- regardless of column count, and with NO spill / column_index.
+
+        A lone row is read by label, so a wide row is never miscount-prone; the
+        labels are the column names, so no column_index map is needed.
+        """
+        cols = ["id", "name", "city"]
+        data = [{"id": 1, "name": "Alice", "city": "NYC"}]
+        mock_result = Mock()
+        mock_result.data = data
+        mock_result.columns = cols
+        mock_result.execution_time = 0.1
+        mock_result.query_id = "single-row-id"
+        mock_connection.execute_query.return_value = mock_result
+
+        with patch.object(
+            QueryValidator, "validate", return_value=(True, None, QueryType.SELECT)
+        ):
+            result = await execute_query(mock_connection, mock_cache, "SELECT * FROM t")
+
+        header_part, _, body = result.partition("\n---\n")
+        # No spill, no column_index (labels carry the names), no preview markers.
+        assert "results_file" not in header_part
+        assert "spilled" not in header_part
+        assert "column_index" not in header_part
+        # Aligned labeled lines: names left-padded to a common width, "  " gap.
+        assert body.split("\n") == [
+            "id    1",
+            "name  Alice",
+            "city  NYC",
+        ]
+
+    @pytest.mark.asyncio
+    async def test_wide_single_row_returns_labeled_without_spilling(
         self, mock_connection, mock_cache, tmp_path
     ):
-        """A result with > MAX_INLINE_COLUMNS columns ALWAYS spills to a file,
-        regardless of how few rows or characters it is.
+        """A WIDE single-row result does NOT spill: a lone row is rendered as a
+        labeled record (NAME  value per line), ignoring the column-count gate
+        (issue #52). No file, no column_index, no "preview only" wording.
 
-        There is no inline labeled (name=value) format anymore: if a result is
-        wide enough to be miscount-prone read by eye, it does not belong in
-        context at all. It spills so the agent reads it by column INDEX via the
-        column_index map. This case is deliberately tiny (one short row) to prove
-        column count alone -- not size -- triggers the spill.
+        The labeled format means the wide row is read by label, never by tab
+        position, so the miscount hazard that forces multi-row wide results to a
+        file simply does not apply here.
         """
-        n = query_executor.MAX_INLINE_COLUMNS + 1  # one past the inline limit
+        n = query_executor.MAX_INLINE_COLUMNS + 1  # one past the width gate
         cols = [f"c{i}" for i in range(n)]
         row = {c: i for i, c in enumerate(cols)}
         mock_result = Mock()
@@ -399,17 +432,18 @@ class TestExecuteQuery:
         ):
             result = await execute_query(mock_connection, mock_cache, "SELECT * FROM t")
 
-        header_part, _, tsv_part = result.partition("\n---\n")
-        # It spilled despite being a single tiny row: width alone forced it.
-        assert "results_file" in header_part
-        assert "spilled" in header_part
-        # column_index is the sole column reference, 1-based for awk.
-        assert f"column_index: {query_executor.column_index_map(cols)}" in header_part
-        # Preview is a single DATA-ONLY positional row (no header, not labeled).
-        preview_lines = tsv_part.split("\n")
-        assert len(preview_lines) == 1
-        assert preview_lines[0] == "\t".join(str(i) for i in range(n))
-        assert "c0=" not in tsv_part  # no leftover labeled format
+        header_part, _, body = result.partition("\n---\n")
+        # No spill despite width; no column_index (labels carry the names).
+        assert "results_file" not in header_part
+        assert "spilled" not in header_part
+        assert "preview only" not in result
+        assert "column_index" not in header_part
+        # Every column appears as its own labeled line with the right value.
+        body_lines = body.split("\n")
+        assert len(body_lines) == n
+        for i, line in enumerate(body_lines):
+            assert line.startswith(f"c{i}")
+            assert line.split("  ")[-1] == str(i)
 
     @pytest.mark.asyncio
     async def test_narrow_tall_result_spills_on_row_count(
@@ -440,24 +474,26 @@ class TestExecuteQuery:
         ):
             result = await execute_query(mock_connection, mock_cache, "SELECT * FROM t")
 
-        header_part, _, _ = result.partition("\n---\n")
+        header_part, _, body = result.partition("\n---\n")
         # Total chars are trivially small; only the row count forced the spill.
         assert "results_file" in header_part
-        assert "spilled" in header_part
+        # No inline preview: spilled results carry no TSV body.
+        assert body == ""
+        assert "spilled" not in header_part
 
     @pytest.mark.asyncio
     async def test_narrow_short_giant_cell_spills_on_char_backstop(
         self, mock_connection, mock_cache, tmp_path
     ):
-        """The char budget is a BACKSTOP for a narrow + short result that still
-        busts the size ceiling via one giant cell (e.g. a big JSON blob).
+        """The byte cap ALWAYS wins, even for a single row: a 1-row result whose
+        one cell busts the char budget (e.g. a big JSON blob) still spills.
 
-        Shape gates pass (1 col, 1 row), so only INLINE_RESULT_CHAR_BUDGET can
-        catch it. This proves the char gate fires independently of row/column
-        count -- exactly the pathological case it exists for.
+        A lone row would normally render inline as a labeled record, but the
+        labeled text is size-checked against INLINE_RESULT_CHAR_BUDGET first, so
+        a giant cell falls through to spill instead of bloating context.
         """
         giant = "x" * (INLINE_RESULT_CHAR_BUDGET + 100)
-        data = [{"blob": giant}]  # 1 row, 1 col, but one huge value
+        data = [{"blob": giant}]  # 1 row, 1 col, but one huge value -> spills
         mock_result = Mock()
         mock_result.data = data
         mock_result.columns = ["blob"]
@@ -473,13 +509,18 @@ class TestExecuteQuery:
         ):
             result = await execute_query(mock_connection, mock_cache, "SELECT * FROM t")
 
-        header_part, _, _ = result.partition("\n---\n")
+        header_part, _, body = result.partition("\n---\n")
         assert "results_file" in header_part
-        assert "spilled" in header_part
+        assert body == ""  # no inline preview
+        assert "spilled" not in header_part
 
     @pytest.mark.asyncio
     async def test_execute_query_formats_values(self, mock_connection, mock_cache):
-        """Test query formats special values correctly."""
+        """Test query formats special values correctly.
+
+        This is a single-row result, so it renders as a labeled record
+        (``NAME  value`` per line); value formatting is identical to TSV.
+        """
         mock_result = Mock()
         mock_result.data = [
             {
@@ -501,10 +542,10 @@ class TestExecuteQuery:
                 mock_connection, mock_cache, "SELECT * FROM test"
             )
 
-            parsed = parse_text_response(result)
-            assert parsed["status"] == "success"
-            assert parsed["columns"] == ["dt", "binary", "null", "regular"]
-            cells = dict(zip(parsed["columns"], parsed["data_rows"][0], strict=False))
+            header_part, _, body = result.partition("\n---\n")
+            assert "status: success" in header_part
+            # Labeled lines: "name<pad>  value"; names are single tokens here.
+            cells = dict(line.split(None, 1) for line in body.split("\n"))
             assert "2024-01-01" in cells["dt"]
             assert cells["binary"] == "test"
             assert cells["null"] == "\\N"  # SQL NULL sentinel

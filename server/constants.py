@@ -76,17 +76,6 @@ SPILL_MAX_TOTAL_BYTES = _env_int(
 )  # 10 GB -- backstop, not the primary sweeper
 SPILL_MIN_AGE_SECONDS = _env_int("SNOWFLAKE_MCP_SPILL_MIN_AGE_SECONDS", 60)
 
-# Number of data rows included in the inline preview when spilling to disk.
-#
-# This is deliberately *one* row, not a sample. When a result spills, the
-# inline preview's only job is proof-of-shape: show the column header and a
-# single concrete data row so the agent can see value formatting (dates,
-# nulls, numeric vs string) and write a correct grep/awk against the file.
-# The preview is never the answer for a spilled result, so a larger preview is
-# pure wasted context: if the task needs row N>1, the agent must read the file
-# regardless. One row gives the shape at minimal token cost.
-SPILL_PREVIEW_ROWS = 1
-
 # Max column count for an INLINE result. Above this, the result always spills to
 # a file -- regardless of how few rows or characters it is.
 #
