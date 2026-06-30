@@ -138,6 +138,34 @@ def build_tsv_rows(rows: list[dict], names: list[str]) -> str:
     return "\n".join(tsv_row_line(row, names) for row in rows)
 
 
+def build_labeled_record(row: dict, names: list[str]) -> str:
+    """Render a SINGLE result row as aligned ``NAME  value`` lines (one per col).
+
+    This is the inline format for a one-row result, used in place of positional
+    TSV regardless of column count. A lone row is read by *label*, never by tab
+    position, so the wide-result miscount hazard (counting tab fields by eye to
+    pair a value with its column) simply does not apply -- which is why the
+    column-count gate is ignored for a single row. The labels ARE the column
+    names, so no separate ``column_index`` map is needed.
+
+    Names are left-padded to a common width so values line up in a readable
+    column. Values reuse the shared TSV escaping (``format_value`` +
+    :func:`tsv_escape`): SQL NULL becomes :data:`TSV_NULL`, and tabs/newlines are
+    backslash-escaped so each field stays on exactly one physical line and never
+    spills into an unlabeled continuation line.
+
+    Names are not escaped (they are display labels, consistent with
+    :func:`column_index_map`). Callers must size-check the returned string
+    against the inline char budget: a row carrying a giant cell still has to
+    spill to a file.
+    """
+    width = max((len(name) for name in names), default=0)
+    return "\n".join(
+        f"{name.ljust(width)}  {tsv_escape(format_value(row.get(name)))}"
+        for name in names
+    )
+
+
 def write_tsv_file(file_path: str, rows: list[dict], names: list[str]) -> int:
     """Write rows to ``file_path`` as TSV (header + one line per row).
 

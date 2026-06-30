@@ -17,13 +17,12 @@ from server.constants import (
     SPILL_MAX_FILES,
     SPILL_MAX_TOTAL_BYTES,
     SPILL_MIN_AGE_SECONDS,
-    SPILL_PREVIEW_ROWS,
 )
 from server.schema_cache import SchemaCache
 from server.serialization import (
     TSV_NULL,
+    build_labeled_record,
     build_tsv,
-    build_tsv_rows,
     column_index_map,
     write_tsv_file,
 )
@@ -273,29 +272,33 @@ async def execute_query(
     and returns all results as a compact, line-oriented text payload.
 
     The response is a small ``key: value`` metadata header followed by a
-    ``---`` separator and a TSV block (header line of column names + one line
-    per row). Returning text (rather than a dict) both compresses the payload
-    and suppresses FastMCP's duplicate ``structuredContent`` serialization.
+    ``---`` separator and a result block. Returning text (rather than a dict)
+    both compresses the payload and suppresses FastMCP's duplicate
+    ``structuredContent`` serialization.
 
-    The TSV block is designed to be parsed directly with grep/awk/cut, e.g.
-    ``awk -F'\\t' 'NR>1 && $3=="X"'``. NULLs render as ``\\N``; tabs/newlines in
-    values are backslash-escaped so each row stays on exactly one line.
+    The inline result block has two shapes by row count:
+      * ONE row -> an aligned ``NAME  value`` record (one column per line),
+        regardless of column count. A lone row is read by label, so a wide row
+        is never miscounted by tab position. (Exception: a one-row result whose
+        single cell busts the char budget -- e.g. a megabyte of JSON -- spills.)
+      * 2..MAX_INLINE_ROWS narrow rows -> a positional TSV (header line of
+        column names + one bare tab-separated row each), parsed with grep/awk,
+        e.g. ``awk -F'\\t' 'NR>1 && $3=="X"'``.
+    NULLs render as ``\\N``; tabs/newlines in values are backslash-escaped so
+    each field stays on exactly one line.
 
-    Auto-spill: a result is returned inline ONLY when it is narrow (a handful of
-    columns) AND short (a screenful of rows). If it is too WIDE (more columns
-    than fit a by-eye read), too TALL (more rows than the model can reliably
-    aggregate/scan in context), or too LARGE (the TSV busts the char budget --
-    e.g. one giant cell), the tool does NOT dump a wall of text or silently
+    Auto-spill: a multi-row result is returned inline ONLY when it is narrow (a
+    handful of columns) AND short (a screenful of rows). If it is too WIDE (more
+    columns than fit a by-eye positional read), too TALL (more rows than the
+    model can reliably aggregate/scan in context), or too LARGE (the TSV busts
+    the char budget), the tool does NOT dump a wall of text or silently
     truncate. It writes the *complete* result to a temp ``.tsv`` file (identical
-    format, including a header line) and returns a one-row proof-of-shape preview
-    plus ``results_file: /path`` and a ``column_index`` map. The preview is
-    deliberately a single row and is DATA ONLY (no header line): for a spilled
-    result the preview is never the answer, and the column names already live
-    -- with their positions -- in the ``column_index`` map, so repeating them as
-    a TSV header would just duplicate every name in the payload. The map is the
-    single column reference for both the preview and the file. The agent
-    reads/greps the file for the full data. NULL/empty semantics are identical
-    on disk and inline.
+    format, including a header line) and returns ``results_file: /path`` plus a
+    ``column_index`` name->position map -- and NO inline preview: the agent must
+    read the file regardless, and its first read shows formatting with the
+    header attached. The map lets the agent write ``awk $N`` with no tab
+    counting. ``rows:`` is always the true total. NULL/empty semantics are
+    identical on disk and inline.
 
     Args:
         connection: Active Snowflake connection
@@ -353,76 +356,69 @@ async def execute_query(
             "query_id": result.query_id,
         }
 
-        # Inline results are ONLY ever a narrow positional TSV (header line +
-        # bare tab-separated rows). There is no inline ``name=value`` format:
-        # the moment a result is wide enough that reading a value by counting
-        # tab positions becomes error-prone, it does not belong in context at
-        # all -- it spills to a file where the agent reads it by column INDEX
-        # (column_index map -> awk $N) with zero counting.
+        # --- Inline-vs-spill decision -------------------------------------
         #
-        # So a result spills if ANY gate trips:
-        #   * too WIDE  -- more than MAX_INLINE_COLUMNS columns: hard to read by
-        #                  eye (counting tab positions), regardless of row count.
+        # Single row -- the byte cap is the ONLY thing that can push it to disk.
+        # A one-row result is rendered as an aligned ``NAME  value`` record
+        # (one column per line) regardless of column count: a lone row is read
+        # by label, never by tab position, so the wide-result miscount hazard
+        # does not apply and the column-count gate is irrelevant. The labels are
+        # the column names, so no separate column_index map is needed. We build
+        # the labeled text first and return it inline only when it fits the
+        # budget; a single giant cell (e.g. a megabyte of nested JSON) still
+        # busts the cap and falls through to spill below.
+        if len(result.data) == 1:
+            labeled = build_labeled_record(result.data[0], column_names)
+            if len(labeled) <= INLINE_RESULT_CHAR_BUDGET:
+                return build_text_response(status="success", fields=fields, tsv=labeled)
+
+        # Multiple rows (or a one-row giant cell): decide positional-TSV-inline
+        # vs spill by shape/size. A result spills if ANY gate trips:
+        #   * too WIDE  -- more than MAX_INLINE_COLUMNS columns: a multi-row
+        #                  positional TSV this wide forces reading values by
+        #                  counting tab fields by eye, exactly where models
+        #                  miscount. Spilled, the agent reads by column INDEX
+        #                  (column_index map -> awk $N) with zero counting.
         #   * too TALL  -- more than MAX_INLINE_ROWS rows: a wall the model would
         #                  have to aggregate/scan by eye, which it does
         #                  unreliably (measured: miscounts on COUNT-style
         #                  questions). Spilled, the agent uses awk/wc -- exact.
         #   * too LARGE -- the TSV exceeds INLINE_RESULT_CHAR_BUDGET: a backstop
-        #                  for the rare narrow+short result carrying a giant
-        #                  single cell (e.g. a big JSON blob in one row).
-        # The gates are orthogonal: shape (wide/tall) handles "hard to reason
-        # over in context", size handles "one pathologically huge value".
+        #                  for a narrow+short result carrying a giant single cell.
         inline_body = _build_tsv(result.data, column_names)
         too_wide = len(column_names) > MAX_INLINE_COLUMNS
         too_tall = len(result.data) > MAX_INLINE_ROWS
         too_large = len(inline_body) > INLINE_RESULT_CHAR_BUDGET
 
-        # Auto-spill: write the COMPLETE result to a temp .tsv file and return
-        # only a one-row proof-of-shape preview plus the file path. We never dump
-        # a wall of text and never silently truncate without telling the agent.
-        # The preview is not a data sample: for a spilled result it can never be
-        # the answer, so a single row (column shape + value formatting) is enough
-        # for the agent to write a correct grep/awk and avoids wasting context.
         if too_wide or too_tall or too_large:
+            # Spill the COMPLETE result to a temp .tsv. We do NOT emit an inline
+            # preview: the agent has to read the file regardless, and its first
+            # read (e.g. ``head``) shows value formatting WITH the header line
+            # attached -- strictly better than a header-less preview row, which
+            # would just re-import into context the wide/miscount-prone data we
+            # spilled to get OUT of context. We do surface the column_index map:
+            # it is names+positions once (cheap) and lets the agent write
+            # ``awk $N`` without counting tab fields against the header (the
+            # single most error-prone step on a wide result).
             spill_path, written = spill_rows_to_disk(
                 result.data, column_names, infix="query"
             )
-            preview_count = min(SPILL_PREVIEW_ROWS, written)
-            # Header-less preview: the column names live (with positions) in the
-            # column_index map, so re-emitting them as a TSV header line here
-            # would duplicate every name in the payload for no benefit. The
-            # preview is data-only -- just enough to show value formatting/shape.
-            preview_tsv = build_tsv_rows(result.data[:SPILL_PREVIEW_ROWS], column_names)
             fields["results_file"] = spill_path
-            fields["preview_rows"] = preview_count
-            # 1-based name->position map. This is the SOLE column reference for a
-            # spilled result (the preview is header-less): it both names the
-            # columns and gives the awk/cut index, so the agent never has to
-            # count columns by eye -- the most error-prone step on wide results.
-            # The on-disk file still carries its own TSV header line.
+            # 1-based name->position map: the sole column reference for a spilled
+            # result. The on-disk file still carries its own TSV header line.
             fields["column_index"] = column_index_map(column_names)
-            # All dynamic facts already live in dedicated fields: rows (true
-            # total), results_file (path), preview_rows, column_index. The TSV
-            # format, the on-disk header line, and the awk/cut workflow are
-            # static and documented in the tool description -- repeating any of
-            # it here would just burn output tokens on every spill. So this is a
-            # bare marker: the line(s) after the --- are a header-less preview.
-            row_word = "row" if preview_count == 1 else "rows"
-            fields["spilled"] = (
-                f"{preview_count}-{row_word} preview only; full results in results_file"
-            )
             reason = "wide" if too_wide else "tall" if too_tall else "large"
             logger.warning(
                 f"Query result spilled to disk ({reason}): {written:,} rows, "
                 f"{len(column_names)} cols, {len(inline_body):,} chars "
                 f"-> {spill_path}"
             )
-            return build_text_response(status="success", fields=fields, tsv=preview_tsv)
+            return build_text_response(status="success", fields=fields)
 
-        # Fits inline: narrow (<=MAX_INLINE_COLUMNS) and within the char budget.
-        # ``inline_body`` is a compact positional TSV (header line + bare
-        # tab-separated rows) -- the only inline format. A few columns are
-        # trivially read by eye, so no per-cell labeling is needed.
+        # Fits inline: 2..MAX_INLINE_ROWS rows, <=MAX_INLINE_COLUMNS cols, within
+        # the char budget. ``inline_body`` is a compact positional TSV (header
+        # line + bare tab-separated rows). A few columns are trivially read by
+        # eye, so no per-cell labeling is needed.
         return build_text_response(status="success", fields=fields, tsv=inline_body)
 
     except ValueError as e:

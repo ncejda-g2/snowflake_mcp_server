@@ -11,6 +11,7 @@ from server.serialization import (
     CSV_EXTENSION,
     TSV_EXTENSION,
     TSV_NULL,
+    build_labeled_record,
     build_tsv,
     build_tsv_rows,
     column_index_map,
@@ -84,6 +85,31 @@ def test_build_tsv_rows_has_no_header_line():
 
 def test_build_tsv_rows_empty():
     assert build_tsv_rows([], ["id", "name"]) == ""
+
+
+def test_build_labeled_record_aligns_and_reuses_tsv_escaping():
+    """A single row renders as aligned ``NAME  value`` lines, one per column.
+
+    Names are left-padded to a common width; values reuse the shared escaping
+    (NULL -> sentinel, newlines/tabs escaped so each field is one line).
+    """
+    row = {"id": 1, "long_name": "Alice", "note": None}
+    names = ["id", "long_name", "note"]
+    out = build_labeled_record(row, names)
+    width = len("long_name")  # widest name drives the column
+    assert out.split("\n") == [
+        f"{'id'.ljust(width)}  1",
+        f"{'long_name'.ljust(width)}  Alice",
+        f"{'note'.ljust(width)}  {TSV_NULL}",  # NULL sentinel, not empty
+    ]
+
+
+def test_build_labeled_record_keeps_one_line_per_field():
+    """A value with embedded tabs/newlines stays on its label's single line."""
+    row = {"blob": "a\tb\nc"}
+    out = build_labeled_record(row, ["blob"])
+    assert "\n" not in out.split("  ", 1)[1]  # value half has no raw newline
+    assert out == "blob  a\\tb\\nc"
 
 
 def test_column_index_map_is_1_based_and_matches_awk():

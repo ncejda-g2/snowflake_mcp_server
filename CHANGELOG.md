@@ -5,6 +5,15 @@ All notable changes to the Snowflake MCP Server will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] - 2026-06-30
+
+### Fixed
+- **No more pointless spill-to-disk for single-row results** (#52): `execute_query` spilled any result wider than `MAX_INLINE_COLUMNS` (>5 cols) to a temp `.tsv` purely on column count — so a 1-row × 9-col result wrote a redundant file and emitted a misleading `"1-row preview only; full results in results_file"` message, even though the single row already *was* the complete result.
+
+### Changed
+- **execute_query inline format is now row-count-aware.** A **single-row** result is rendered as an aligned `NAME  value` labeled record (one column per line), regardless of column count — readable by label with no tab-counting, so a wide lone row no longer spills. **Multi-row** narrow results keep the positional TSV format. The byte cap (`INLINE_RESULT_CHAR_BUDGET`) always wins: a one-row result whose single cell (e.g. a giant nested-JSON blob) busts the budget still spills.
+- **Spilled results no longer carry an inline preview.** A spill response is now just `results_file` + `column_index` (+ `rows`/`cols`) with no preview rows and no `spilled` marker. The agent reads the file regardless, and its first read shows value formatting *with the header line attached* — strictly better than a header-less preview row, which re-imported the wide/miscount-prone data into context for no benefit. Saves output tokens on every spill. The now-unused `SPILL_PREVIEW_ROWS` constant was removed.
+
 ## [1.0.0] - 2026-06-03
 
 First stable release. Token-efficiency pass and a memory-leak fix.

@@ -339,14 +339,16 @@ async def describe_table_tool(
 
     Returns a compact TEXT payload (not JSON): a `key: value` header
     (status, rows, cols, execution_time, query_id), a `---` separator, then a
-    positional TSV block. TSV rules: line 1 = tab-separated column names, one row
-    per line after; NULL = `\\N`; tabs/newlines escaped so each row is one line.
-    Parse with awk/cut, e.g. `awk -F'\\t' 'NR>1 && $3=="X"'`.
+    result block whose shape depends on row count:
+    - ONE row: aligned `NAME  value` lines (one column per line), any width.
+    - 2+ narrow rows: positional TSV (line 1 = tab-separated column names, one
+      row per line after). Parse with awk/cut, e.g. `awk -F'\\t' 'NR>1 && $3=="X"'`.
+    NULL = `\\N`; tabs/newlines escaped so each field is one line.
 
-    Large/wide/tall results auto-spill the COMPLETE result to a temp `.tsv` file;
-    the payload then carries `results_file`, `column_index` (name->position), and a
-    `spilled` marker in place of inline rows. Read/grep/awk the file; `rows:` is
-    always the true total.
+    Multi-row results that are wide, tall, or too large auto-spill the COMPLETE
+    result to a temp `.tsv` file; the payload then carries `results_file` and
+    `column_index` (name->position) and NO inline rows. Read/grep/awk the file
+    (it has its own header line); `rows:` is always the true total.
 
     Example: execute_query("SELECT * FROM SALES_DB.PUBLIC.CUSTOMERS LIMIT 10")
     """,
