@@ -1,9 +1,9 @@
 {
   "$schema": "https://raw.githubusercontent.com/modelcontextprotocol/mcpb/main/schemas/mcpb-manifest-latest.schema.json",
-  "manifest_version": "0.4",
+  "manifest_version": "0.3",
   "name": "snowflake-readonly-mcp",
   "display_name": "Snowflake Read-Only MCP",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Secure, read-only access to your Snowflake warehouse. Browse schemas, execute queries, and export results \u2014 all without write permissions.",
   "long_description": "This MCP server provides read-only access with schema browsing, SQL execution, and TSV export. Supports browser SSO and key-pair authentication. Uses an intelligent schema cache for fast metadata lookups.",
   "author": {
@@ -17,7 +17,7 @@
   "homepage": "https://github.com/ncejda-g2/snowflake_mcp_server",
   "support": "https://github.com/ncejda-g2/snowflake_mcp_server/issues",
   "server": {
-    "type": "uv",
+    "type": "python",
     "entry_point": "server/__main__.py",
     "mcp_config": {
       "command": "uv",
@@ -31,7 +31,8 @@
         "SNOWFLAKE_ACCOUNT": "${user_config.snowflake_account}",
         "SNOWFLAKE_USERNAME": "${user_config.snowflake_username}",
         "SNOWFLAKE_WAREHOUSE": "${user_config.snowflake_warehouse}",
-        "SNOWFLAKE_ROLE": "${user_config.snowflake_role}"
+        "SNOWFLAKE_ROLE": "${user_config.snowflake_role}",
+        "SNOWFLAKE_CREDENTIAL_FILE": "${user_config.snowflake_credential_file}"
       }
     }
   },
