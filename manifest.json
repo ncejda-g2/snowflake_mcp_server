@@ -20,11 +20,10 @@
     "type": "python",
     "entry_point": "server/__main__.py",
     "mcp_config": {
-      "command": "uv",
+      "command": "uvx",
       "args": [
-        "run",
-        "--directory",
-        "${__dirname}",
+        "--from",
+        "snowflake-readonly-mcp==1.0.2",
         "snowflake-readonly-mcp"
       ],
       "env": {
@@ -99,10 +98,7 @@
       "darwin",
       "win32",
       "linux"
-    ],
-    "runtimes": {
-      "python": ">=3.12,<3.14"
-    }
+    ]
   },
   "keywords": [
     "snowflake",

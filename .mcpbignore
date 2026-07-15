@@ -53,6 +53,13 @@ things-mcpb/
 requirements.txt
 requirements-dev.txt
 
-# MCPB spec: must NOT include bundled deps for type=uv
-server/lib/
-server/venv/
+# uvx model: the server is fetched from PyPI at runtime
+# (uvx --from snowflake-readonly-mcp==<version>), so the bundle ships
+# only the manifest — no Python source or lockfiles are executed from it.
+server/
+main.py
+pyproject.toml
+uv.lock
+requirements.txt
+scripts/
+Dockerfile
