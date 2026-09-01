@@ -6,7 +6,7 @@ import logging
 from typing import Any
 
 from fastmcp import FastMCP
-from fastmcp.tools.tool import ToolResult
+from fastmcp.tools import ToolResult
 
 from server.config import Config
 from server.schema_cache import SchemaCache

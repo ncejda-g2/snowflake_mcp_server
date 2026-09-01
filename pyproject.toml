@@ -4,31 +4,31 @@ build-backend = "hatchling.build"
 
 [project]
 name = "snowflake-readonly-mcp"
-version = "1.0.1"
+version = "1.0.3"
 description = "A Snowflake read-only MCP server with key-pair and browser SSO authentication"
 authors = [{ name = "Nicholas Cejda", email = "ncejda@g2.com" }]
 requires-python = ">=3.12,<3.14"
 dependencies = [
-  "fastmcp>=2.9.2",
-  "snowflake-connector-python>=3.0.0",
-  "pydantic>=2.0.0",
-  "httpx>=0.28.1",
-  "cachetools>=5.0.0",
-  "sqlparse>=0.4.0",
-  "starlette>=0.47.1",
-  "uvicorn>=0.34.3",
+  "fastmcp>=4.0.0,<5.0.0",
+  "snowflake-connector-python>=3.0.0,<4.0.0",
+  "pydantic>=2.0.0,<3.0.0",
+  "httpx>=0.28.1,<1.0.0",
+  "cachetools>=5.0.0,<7.0.0",
+  "sqlparse>=0.4.0,<1.0.0",
+  "starlette>=0.47.1,<2.0.0",
+  "uvicorn>=0.34.3,<1.0.0",
 ]
 
 [project.optional-dependencies]
 dev = [
-  "ruff>=0.7.0",
-  "pre-commit>=3.0.0",
-  "mypy>=1.0.0",
-  "pytest>=8.4.1",
-  "pytest-asyncio>=0.23.0",
-  "pytest-mock>=3.12.0",
-  "pytest-httpx>=0.30.0",
-  "pytest-cov>=4.1.0"
+  "ruff>=0.7.0,<1.0.0",
+  "pre-commit>=3.0.0,<5.0.0",
+  "mypy>=1.0.0,<2.0.0",
+  "pytest>=8.4.1,<9.0.0",
+  "pytest-asyncio>=0.23.0,<2.0.0",
+  "pytest-mock>=3.12.0,<4.0.0",
+  "pytest-httpx>=0.30.0,<1.0.0",
+  "pytest-cov>=4.1.0,<7.0.0"
   ]
 
 [project.scripts]
