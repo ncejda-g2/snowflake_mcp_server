@@ -9,7 +9,7 @@ description = "A Snowflake read-only MCP server with key-pair and browser SSO au
 authors = [{ name = "Nicholas Cejda", email = "ncejda@g2.com" }]
 requires-python = ">=3.12,<3.14"
 dependencies = [
-  "fastmcp>=2.9.2",
+  "fastmcp==4.0.0",
   "snowflake-connector-python>=3.0.0",
   "pydantic>=2.0.0",
   "httpx>=0.28.1",
