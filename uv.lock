@@ -1455,22 +1455,22 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "cachetools", specifier = ">=5.0.0" },
-    { name = "fastmcp", specifier = "==4.0.0" },
-    { name = "httpx", specifier = ">=0.28.1" },
-    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.0.0" },
-    { name = "pre-commit", marker = "extra == 'dev'", specifier = ">=3.0.0" },
-    { name = "pydantic", specifier = ">=2.0.0" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.4.1" },
-    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23.0" },
-    { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.1.0" },
-    { name = "pytest-httpx", marker = "extra == 'dev'", specifier = ">=0.30.0" },
-    { name = "pytest-mock", marker = "extra == 'dev'", specifier = ">=3.12.0" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.7.0" },
-    { name = "snowflake-connector-python", specifier = ">=3.0.0" },
-    { name = "sqlparse", specifier = ">=0.4.0" },
-    { name = "starlette", specifier = ">=0.47.1" },
-    { name = "uvicorn", specifier = ">=0.34.3" },
+    { name = "cachetools", specifier = ">=5.0.0,<7.0.0" },
+    { name = "fastmcp", specifier = ">=4.0.0,<5.0.0" },
+    { name = "httpx", specifier = ">=0.28.1,<1.0.0" },
+    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.0.0,<2.0.0" },
+    { name = "pre-commit", marker = "extra == 'dev'", specifier = ">=3.0.0,<5.0.0" },
+    { name = "pydantic", specifier = ">=2.0.0,<3.0.0" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.4.1,<9.0.0" },
+    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23.0,<2.0.0" },
+    { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.1.0,<7.0.0" },
+    { name = "pytest-httpx", marker = "extra == 'dev'", specifier = ">=0.30.0,<1.0.0" },
+    { name = "pytest-mock", marker = "extra == 'dev'", specifier = ">=3.12.0,<4.0.0" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.7.0,<1.0.0" },
+    { name = "snowflake-connector-python", specifier = ">=3.0.0,<4.0.0" },
+    { name = "sqlparse", specifier = ">=0.4.0,<1.0.0" },
+    { name = "starlette", specifier = ">=0.47.1,<2.0.0" },
+    { name = "uvicorn", specifier = ">=0.34.3,<1.0.0" },
 ]
 provides-extras = ["dev"]
 
