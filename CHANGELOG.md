@@ -5,6 +5,11 @@ All notable changes to the Snowflake MCP Server will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.3] - 2026-09-01
+
+### Fixed
+- Use FastMCP's public `fastmcp.tools` import for `ToolResult` and pin FastMCP 4.0.0 to prevent dependency drift from breaking server startup.
+
 ## [1.0.1] - 2026-06-30
 
 ### Fixed
